@@ -35,13 +35,13 @@ sessionInfo()
 
 5. After this course, you can make this repository public and use it to demonstrate your skill sets on job market.
 
-**Solution** Done.
+**Solution:** Done.
 
 ## Q2. Data ethics training
 
 This exercise (and later in this course) uses the [MIMIC-IV data v3.1](https://physionet.org/content/mimiciv/3.1/), a freely accessible critical care database developed by the MIT Lab for Computational Physiology. Follow the instructions at <https://mimic.mit.edu/docs/gettingstarted/> to (1) complete the CITI `Data or Specimens Only Research` course and (2) obtain the PhysioNet credential for using the MIMIC-IV data. Display the verification links to your completion report and completion certificate here. **You must complete Q2 before working on the remaining questions.** (Hint: The CITI training takes a few hours and the PhysioNet credentialing takes a couple days; do not leave it to the last minute.)
 
-**Solution**
+**Solution:**
 
 Data or Specimens Only Research 
 
@@ -67,11 +67,34 @@ ls -l ~/mimic/
 ```
 Refer to the documentation <https://physionet.org/content/mimiciv/3.1/> for details of data files. Do **not** put these data files into Git; they are big. Do **not** copy them into your directory. Do **not** decompress the gz data files. These create unnecessary big files and are not big-data-friendly practices. Read from the data folder `~/mimic` directly in following exercises. 
 
+**Solution:** I downloaded the MIMIC-IV data and it's available under `~/mimic`.
+
   Use Bash commands to answer following questions.
 
 2. Display the contents in the folders `hosp` and `icu` using Bash command `ls -l`. Why are these data files distributed as `.csv.gz` files instead of `.csv` (comma separated values) files? Read the page <https://mimic.mit.edu/docs/iv/> to understand what's in each folder.
 
+**Solution:**
+Content of `hosp` folder:
+```{bash}
+ls -l ~/mimic/hosp/
+```
+
+Content of `icu` folder:
+```{bash}
+ls -l ~/mimic/icu/
+```
+
+The extension `gz` means that the file is compressed. The data files have large sizes, so they have to be zipped to be dowloaded faster.
+
 3. Briefly describe what Bash commands `zcat`, `zless`, `zmore`, and `zgrep` do.
+
+**Solution:** 
+
+All four commands applies to files with `.gz` extension.
+`zcat` displays the contents of compressed files without decompressing them to a separate file.
+`zless` views the contents of compressed files in a scrollable viewer, similar to `less`.
+`zmore` views the contents of compressed files in a paginated way (one screenful at a time), similar to `more`.
+`zgrep` searches for a specified pattern within compressed files and outputs matching lines, similar to `grep`.
 
 4. (Looping in Bash) What's the output of the following bash script?
 ```{bash}
@@ -81,7 +104,17 @@ do
   ls -l $datafile
 done
 ```
+
+The output shows all files with names beginning with `a`, `l`, or `pa` under directory `hosp`.
+
 Display the number of lines in each data file using a similar loop. (Hint: combine linux commands `zcat <` and `wc -l`.)
+
+```{bash}
+for datafile in ~/mimic/hosp/*
+do
+  wc -l $datafile |
+done
+```
 
 5. Display the first few lines of `admissions.csv.gz`. How many rows are in this data file, excluding the header line? Each `hadm_id` identifies a hospitalization. How many hospitalizations are in this data file? How many unique patients (identified by `subject_id`) are in this data file? Do they match the number of patients listed in the `patients.csv.gz` file? (Hint: combine Linux commands `zcat <`, `head`/`tail`, `awk`, `sort`, `uniq`, `wc`, and so on.)
 
