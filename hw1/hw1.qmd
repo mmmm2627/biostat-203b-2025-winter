@@ -111,7 +111,7 @@ The output shows all files with names beginning with `a`, `l`, or `pa` under dir
 Display the number of lines in each data file using a similar loop. (Hint: combine linux commands `zcat <` and `wc -l`.)
 
 **Solution:**
-```{bash}
+```{bash, cache=TRUE}
 for datafile in ~/mimic/*/*.gz
 do
   echo "$datafile: $(zcat < $datafile | wc -l)"
@@ -253,6 +253,38 @@ wc -l
 ```
 
 8. _To compress, or not to compress. That's the question._ Let's focus on the big data file `labevents.csv.gz`. Compare compressed gz file size to the uncompressed file size. Compare the run times of `zcat < ~/mimic/labevents.csv.gz | wc -l` versus `wc -l labevents.csv`. Discuss the trade off between storage and speed for big data files. (Hint: `gzip -dk < FILENAME.gz > ./FILENAME`. Remember to delete the large `labevents.csv` file after the exercise.)
+
+**Solution:**
+
+I runned `gzip -dk labevents.csv.gz ./labevents.csv` to decompress the file into `labevents.csv`.
+
+File size comparison:
+```{bash, cache=TRUE}
+ls -lh ~/mimic/hosp/labevents*
+```
+
+The uncompressed file (18G) is more than 7 times larger than the compressed file (2.5G).
+
+The run time of `zcat | wc` on compressed file:
+```{bash}
+time zcat < ~/mimic/hosp/labevents.csv.gz | wc -l
+```
+
+The run time of `wc` on uncompressed file:
+```{bash}
+time wc -l ~/mimic/hosp/labevents.csv
+```
+
+The runtime of compressed file is 1 min 38 secs, compared to uncompressed file of 5 min 17 secs.
+
+The tradeoff is between balancing storage space and run time.
+
+Compressed files are much smaller than the uncompressed counterparts, significantly reducing storage requirement.
+This is useful for archiving and transporting large datasets. 
+However, operating on compressed files is slower because the file must be decompressed first.
+The uncompressed files operation is faster since the file is directly accessible without decompression, but it takes lots of storage space.
+
+The large uncompressed file is deleted using the command `rm ~/mimic/hosp/labevents.csv`.
 
 ## Q4. Who's popular in Price and Prejudice
 
