@@ -105,10 +105,12 @@ do
 done
 ```
 
+**Solution:**
 The output shows all files with names beginning with `a`, `l`, or `pa` under directory `hosp`.
 
 Display the number of lines in each data file using a similar loop. (Hint: combine linux commands `zcat <` and `wc -l`.)
 
+**Solution:**
 ```{bash}
 for datafile in ~/mimic/*/*.gz
 do
@@ -178,6 +180,48 @@ wc -l
 ```
 
 6. What are the possible values taken by each of the variable `admission_type`, `admission_location`, `insurance`, and `ethnicity`? Also report the count for each unique value of these variables in decreasing order. (Hint: combine Linux commands `zcat`, `head`/`tail`, `awk`, `uniq -c`, `wc`, `sort`, and so on; skip the header line.)
+
+**Solution:**
+
+The possible values taken by `admission_type` and the count in decreasing order:
+```{bash}
+zcat < ~/mimic/hosp/admissions.csv.gz |
+tail -n +2 |
+awk -F, '{print $6}' |
+sort |
+uniq -c |
+sort -r
+```
+
+The possible values taken by `admission_location` and the count in decreasing order:
+```{bash}
+zcat < ~/mimic/hosp/admissions.csv.gz |
+tail -n +2 |
+awk -F, '{print $8}' |
+sort |
+uniq -c |
+sort -r
+```
+
+The possible values taken by `insurance` and the count in decreasing order:
+```{bash}
+zcat < ~/mimic/hosp/admissions.csv.gz |
+tail -n +2 |
+awk -F, '{print $10}' |
+sort |
+uniq -c |
+sort -r
+```
+
+The possible values taken by `ethnicity` (`race` in the file) and the count in decreasing order:
+```{bash}
+zcat < ~/mimic/hosp/admissions.csv.gz |
+tail -n +2 |
+awk -F, '{print $13}' |
+sort |
+uniq -c |
+sort -r
+```
 
 7. The `icusays.csv.gz` file contains all the ICU stays during the study period. How many ICU stays, identified by `stay_id`, are in this data file? How many unique patients, identified by `subject_id`, are in this data file?
 
