@@ -84,7 +84,7 @@ Content of `icu` folder:
 ls -l ~/mimic/icu/
 ```
 
-The extension `gz` means that the file is compressed. The data files have large sizes, so they have to be zipped to be dowloaded faster.
+The extension `gz` means that the file is compressed. The data files have large sizes, so they have to be zipped to be downloaded faster.
 
 3. Briefly describe what Bash commands `zcat`, `zless`, `zmore`, and `zgrep` do.
 
@@ -110,9 +110,9 @@ The output shows all files with names beginning with `a`, `l`, or `pa` under dir
 Display the number of lines in each data file using a similar loop. (Hint: combine linux commands `zcat <` and `wc -l`.)
 
 ```{bash}
-for datafile in ~/mimic/hosp/*
+for datafile in ~/mimic/*/*.gz
 do
-  wc -l $datafile |
+  echo "$datafile: $(zcat < $datafile | wc -l)"
 done
 ```
 
@@ -130,7 +130,9 @@ The number of rows in this data file, excluding the header line:
 zcat < ~/mimic/hosp/admissions.csv.gz | tail -n +2 | wc -l
 ```
 
-Note: `uniq` detects duplicates only if they are next to each other, so need to `sort` first.
+Note: 
+- `uniq` detects duplicates only if they are next to each other, so we need to `sort` first.
+- `tail -n +2` is used to exclude the header.
 
 The number of hospitalizations in this data file:
 ```{bash}
@@ -141,7 +143,7 @@ sort |
 uniq |
 wc -l
 ```
-Alternatively:
+Alternatively using `awk`:
 ```{bash}
 zcat < ~/mimic/hosp/admissions.csv.gz |
 tail -n +2 |
@@ -156,7 +158,7 @@ Peek the first few lines of `patients.csv.gz`:
 zcat < ~/mimic/hosp/patients.csv.gz | head
 ```
 
-The number of unique patients in this data file is
+The number of unique patients in `admissions.csv.gz` is
 ```{bash}
 zcat < ~/mimic/hosp/admissions.csv.gz |
 tail -n +2 |
