@@ -135,7 +135,9 @@ zcat < ~/mimic/hosp/admissions.csv.gz | tail -n +2 | wc -l
 ```
 
 Note: 
+
 - `uniq` detects duplicates only if they are next to each other, so we need to `sort` first.
+
 - `tail -n +2` is used to exclude the header.
 
 The number of hospitalizations in this data file:
@@ -350,9 +352,13 @@ Explain the output. Explain the meaning of `"$1"`, `"$2"`, and `"$3"` in this sh
 **Solution:**
 
 When executing `./middle.sh pg42671.txt 20 5`, the `.sh` file is executed with three parameters passed in:
+
 $1: pg42671.txt
+
 $2: 20
+
 $3: 5
+
 Then in `middle.sh` file, when `head` and `tail` command are run, they look for the actual `$1`, `$2`, `$3` sent along with the file. This is similar to running a function, where we specifies the parameters when calling the function, and within the function, we use temporary variable names instead of the actual variables.
 
 The first line of the shell script `#!/bin/sh` is shebang or hashbang, and it specifies which shell or interpreter should execute the script. Here, it tells the system to use the Bourne shell `sh` to execute the script.
