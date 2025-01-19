@@ -301,13 +301,17 @@ The large uncompressed file is deleted using the command `rm ~/mimic/hosp/labeve
 wget -nc http://www.gutenberg.org/cache/epub/42671/pg42671.txt
 ```
 Explain what `wget -nc` does. Do **not** put this text file `pg42671.txt` in Git. Complete the following loop to tabulate the number of times each of the four characters is mentioned using Linux commands.
+
+**Solution:**
+
+`wget` downloads the files from the web using the link provided by users. `-nc` specifies that `wget` will not overwrite an existing file of the same name in the current directory. Therefore, when the file is already downloaded, the content won't be retrieved again.
+
 ```{bash}
 #| eval: false
-wget -nc http://www.gutenberg.org/cache/epub/42671/pg42671.txt
 for char in Elizabeth Jane Lydia Darcy
 do
-  echo $char:
-  # some bash commands here
+  count=$(grep -o "$char" "pg42671.txt" | wc -l)
+  echo "$char: $count" 
 done
 ```
 
@@ -321,6 +325,12 @@ and
 #| eval: false
 echo 'hello, world' >> test2.txt
 ```
+
+**Solution:**
+
+Both `>` and `>>` are redirection operators. They both create the file if it doesn't exist.
+The main difference is that when running the command again while content exist, `>` will overwrite existing content but `>>` will preserve existing content and adds new content at the end.
+For example, after running the above command for 4 times, `test1.txt` will only have "hello, world" in first line, but `test2.txt` will have 4 "hello, world" in 4 lines.
 
 3. Using your favorite text editor (e.g., `vi`), type the following and save the file as `middle.sh`:
 ```{bash eval=FALSE}
