@@ -353,13 +353,95 @@ When executing `./middle.sh pg42671.txt 20 5`, the `.sh` file is executed with t
 $1: pg42671.txt
 $2: 20
 $3: 5
-Then in `middle.sh` file, when `head` and `tail` command are run, they look for the actual `$1`, `$2`, `$3` sent along with the file. This is similar to running a function, we specifies the parameters when calling the function, and within the function, we use temporary variable names instead of the actual variables.
+Then in `middle.sh` file, when `head` and `tail` command are run, they look for the actual `$1`, `$2`, `$3` sent along with the file. This is similar to running a function, where we specifies the parameters when calling the function, and within the function, we use temporary variable names instead of the actual variables.
 
 The first line of the shell script `#!/bin/sh` is shebang or hashbang, and it specifies which shell or interpreter should execute the script. Here, it tells the system to use the Bourne shell `sh` to execute the script.
 
 ## Q5. More fun with Linux
 
 Try following commands in Bash and interpret the results: `cal`, `cal 2025`, `cal 9 1752` (anything unusual?), `date`, `hostname`, `arch`, `uname -a`, `uptime`, `who am i`, `who`, `w`, `id`, `last | head`, `echo {con,pre}{sent,fer}{s,ed}`, `time sleep 5`, `history | tail`.
+
+**Solution:**
+
+```{bash}
+cal
+```
+`cal`: prints out calender of current month.
+
+```{bash}
+cal 2025
+```
+`cal 2025`: prints out calender of 2025.
+
+```{bash}
+cal 9 1752
+```
+`cal 9 1752`: prints out calender of September of 1752 but it's missing 3rd to 13th.
+
+```{bash}
+date
+```
+`date`: prints out current date, time, and time zone.
+
+```{bash}
+hostname
+```
+`hostname`: prints out name of the host.
+
+```{bash}
+arch
+```
+`arch` shows machine architecture of the system, including hardware platform and processor architecture.
+Here it shows that my laptop is using 64-bit architecture.
+
+```{bash}
+uname -a
+```
+`uname` displays all available information about my system.
+
+```{bash}
+uptime
+```
+`uptime` shows how long the system has been running, along with information about the system's load averages. Here it shows that the system has been up for over 3 hours and 30 minutes.
+
+```{bash}
+whoami
+```
+`whoami` shows the current logged-in user's username.
+
+```{bash}
+who
+```
+`who` displays information about the currently logged-in user, the terminal, and the time at which the user logged in.
+
+```{bash}
+w
+```
+`w` provides detailed information about the users currently logged in, activities, and system information such as uptime and load averages.
+
+```{bash}
+id
+```
+`id` displays the user and group information for the current user or a specified user.
+
+```{bash}
+last | head
+```
+`last` shows a list of the most recent logins on the system.
+
+
+```{bash}
+echo {con,pre}{sent,fer}{s,ed}
+```
+This prints out all combinations of contents in the three brackets in order.
+
+```{bash}
+time sleep 5
+```
+`sleep` pauses the execution of a script or command for a specified duration, in this case, 5 secs.
+`time` shows that `sleep 5` took about 6 secs to run, so the execution did pause for 5 secs.
+
+`history` display the most recent commands that have been executed in the current terminal session..
 
 ## Q6. Book
 
