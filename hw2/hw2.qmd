@@ -56,6 +56,48 @@ There are quite a few utilities in R for reading plain text data files. Let us t
 
 Which function is fastest? Is there difference in the (default) parsed data types? How much memory does each resultant dataframe or tibble use? (Hint: `system.time` measures run times; `pryr::object_size` measures memory usage; all these readers can take gz file as input without explicit decompression.) 
 
+**Solution:**
+
+```{r}
+file_path <- "~/mimic/hosp/admissions.csv.gz"
+
+time_base <- system.time(df_base <- read.csv(file_path))
+size_base <- object_size(df_base)
+
+time_tidy <- system.time(df_tidy <- read_csv(file_path, show_col_types = FALSE))
+size_tidy <- object_size(df_tidy)
+
+time_dt <- system.time(df_dt <- fread(file_path))
+size_dt <- object_size(df_dt)
+```
+
+```{r}
+results <- data.frame(
+  Function = c("read.csv", "read_csv", "fread"),
+  Time = c(time_base[3], time_tidy[3], time_dt[3]),
+  Memory_Usage = c(size_base, size_tidy, size_dt)
+)
+print(results)
+```
+
+`fread` appears to be the fastest function and takes least amount of memory. 
+`read.csv` is the slowest function and takes most amount of memory.
+
+```{r}
+print("Data type parsed by base R:")
+str(df_base)
+print("Data type parsed by tidyverse:")
+str(df_tidy)
+print("Data type parsed by data.table:")
+str(df_dt)
+```
+
+`read.csv` parses data to be a `data.frame` with either `int` or `chr` data type.
+`read_csv` and `fread` parses data to be a `data.frame` with `int` or `chr` data type. 
+Interestingly, both `read_csv` and `fread` recognize data that are date and set it to `POSIXct` data type.
+Additionally, `tidyverse` parses `subject_id` mistakenly to number in scientific notation.
+
+
 ### Q1.2 User-supplied data types
 
 Re-ingest `admissions.csv.gz` by indicating appropriate column data types in `read_csv`. Does the run time change? How much memory does the result tibble use? (Hint: `col_types` argument in `read_csv`.)
