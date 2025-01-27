@@ -102,6 +102,40 @@ Additionally, `tidyverse` parses `subject_id` mistakenly to number in scientific
 
 Re-ingest `admissions.csv.gz` by indicating appropriate column data types in `read_csv`. Does the run time change? How much memory does the result tibble use? (Hint: `col_types` argument in `read_csv`.)
 
+**Solution:**
+
+```{r}
+col_types <- cols(
+  subject_id = col_character(),         
+  hadm_id = col_character(),            
+  admittime = col_datetime(),           
+  dischtime = col_datetime(),           
+  deathtime = col_datetime(),         
+  admission_type = col_character(),     
+  admit_provider_id = col_character(),  
+  admission_location = col_character(), 
+  discharge_location = col_character(), 
+  insurance = col_character(),          
+  language = col_character(),           
+  marital_status = col_character(),     
+  race = col_character(),               
+  edregtime = col_datetime(),           
+  edouttime = col_datetime(),           
+  hospital_expire_flag = col_integer()  
+)
+
+time_specified <- system.time(
+  df_specified <- read_csv(file_path, col_types = col_types)
+)
+size_specified <- object_size(df_specified)
+
+time_specified
+size_specified
+```
+
+Both running time and memory usage increases when column types are specified.
+The run time increases from 1.653 to 2.060 seconds. It takes 117.09 MB memory to read the data.
+
 ## Q2. Ingest big data files
 
 <p align="center">
