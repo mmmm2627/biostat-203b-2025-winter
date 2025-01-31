@@ -253,7 +253,7 @@ system.time({
 })
 ```
 
-It takes 43 seconds to ingest, select, and filter content in `labevents.csv`.
+It takes 46 seconds to ingest, select, and filter content in `labevents.csv`.
 
 Display the number of rows:
 ```{r}
@@ -279,6 +279,48 @@ Re-write the csv file `labevents.csv` in the binary Parquet format (Hint: [`arro
 
 Write a few sentences to explain what is the Parquet format. Imagine you want to explain it to a layman in an elevator.
 
+**Solution:**
+
+Re-write the csv file in the binary Parquet format:
+```{r}
+labevents <- open_dataset("labevents.csv", format = "csv")
+
+write_dataset(labevents, "labevents_parquet", format = "parquet")
+```
+
+```{bash}
+ls -l -h labevents_parquet
+```
+The Parquet file is 2.6G.
+
+Ingest, select, and filter Parquet file:
+```{r}
+system.time({
+  labevents_parquet <- open_dataset("labevents_parquet", format = "parquet")
+
+  labevents_filtered_parquet <- labevents_parquet %>%
+    select(subject_id, itemid, charttime, valuenum) %>%
+    filter(itemid %in% c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)) %>%
+    collect()  # Load into memory
+})
+```
+
+It took 19 seconds to ingest, select, and filter Parquet file.
+
+Display the number of rows:
+```{r}
+nrow(labevents_filtered_parquet)
+```
+
+First 10 rows of result tibble:
+```{r}
+head(labevents_filtered_parquet, 10)
+```
+This verifies that the number of rows and the first 10 rows matches those in Q2.3.
+
+Parquet is a high-performance, space-efficient file format designed for big data. Unlike traditional CSV, Parquet stores data column-wise instead of row-wise. This makes it much faster for analytics, because when you filter or select specific columns, you don’t need to read the entire file—only the relevant parts. Parquet also compresses data better than CSV, saving storage space while boosting performance. 
+Think of it as a well-organized, indexed library, where you can quickly find the books (data) you need instead of scanning every shelf.
+
 ### Q2.6 DuckDB
 
 <p align="center">
@@ -288,6 +330,42 @@ Write a few sentences to explain what is the Parquet format. Imagine you want to
 Ingest the Parquet file, convert it to a DuckDB table by [`arrow::to_duckdb`](https://arrow.apache.org/docs/r/reference/to_duckdb.html), select columns, and filter rows as in Q2.5. How long does the ingest+convert+select+filter process take? Display the number of rows and the first 10 rows of the result tibble and make sure they match those in Q2.3. (Hint: use `dplyr` verbs for selecting columns and filtering rows.)
 
 Write a few sentences to explain what is DuckDB. Imagine you want to explain it to a layman in an elevator.
+
+**Solution:**
+
+```{r}
+system.time({
+  # Ingest Parquet dataset
+  labevents_parquet <- open_dataset("labevents_parquet", format = "parquet")
+  
+  # Convert to DuckDB table
+  con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  labevents_duckdb <- to_duckdb(labevents_parquet, con)
+  
+  # Select columns and filter rows
+  labevents_filtered_duckdb <- labevents_parquet |>
+    select(subject_id, itemid, charttime, valuenum) |>
+    filter(itemid %in% c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)) %>%
+    collect()
+  
+  # Close DuckDB connection
+  dbDisconnect(con)
+})
+```
+It took 14 seconds to ingest Parquet file, select columns, and filter rows.
+
+Display the number of rows:
+```{r}
+nrow(labevents_filtered_duckdb)
+```
+Display first 10 rows:
+```{r}
+head(labevents_filtered_parquet, 10)
+```
+This confirms that DuckDB generated file matches those in Q2.3.
+
+DuckDB is a fast, lightweight database designed for efficient data analysis on a single machine. Unlike traditional databases that optimize for many users, DuckDB is built for analytics—it processes large datasets blazingly fast using an optimized columnar format. 
+It’s like having the power of a full-fledged database engine without needing a server. Imagine Excel on steroids, where queries run instantly, and we can work with billions of rows seamlessly.
 
 ## Q3. Ingest and filter `chartevents.csv.gz`
 
