@@ -386,3 +386,47 @@ In later exercises, we are interested in the vitals for ICU patients: heart rate
 
 Document the steps and show code. Display the number of rows and the first 10 rows of the result tibble.
 
+**Solution:**
+
+Decompress `chartevents.csv.gz` to `chartevents.csv` into current directory
+```{bash}
+#| eval: false
+gunzip -c ~/mimic/icu/chartevents.csv.gz > chartevents.csv
+```
+
+Compress `chartevents.csv` to Parquet format:
+```{r}
+chartevents <- open_dataset("chartevents.csv", format = "csv")
+
+write_dataset(chartevents, path = "chartevents_parquet", format = "parquet")
+```
+
+Convert Parquet to DuckDB & filter data:
+```{r}
+chartevents_parquet <- open_dataset("chartevents_parquet", format = "parquet")
+
+con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+chartevents_duckdb <- to_duckdb(chartevents_parquet, con)
+
+chartevents_filtered_duckdb <- chartevents_duckdb |>
+  select(subject_id, itemid, charttime, valuenum) |>
+  filter(itemid %in% c(220045,220181,220179,223761,220210)) |>
+  collect()
+
+dbDisconnect(con)
+```
+
+Display the number of rows
+```{r}
+nrow(chartevents_filtered_duckdb)
+```
+There are 30195426 rows in the filtered file.
+
+Display the first 10 rows:
+```{r}
+head(chartevents_filtered_duckdb, 10)
+```
+
+Personal thoughts: Even though using DuckDB to ingest Parquet file and the process data is the fastest method in ingesting and manipulating data, the prerequisite steps can be quite time consuming.
+1) Decompress `.gz` file 2) Re-write `.csv` file in Parquet format. These two steps are time costly. 
+If we will do lots of data manipulation later, then these steps are worth it. Otherwise, simply use `read_csv` might be a better way for one time access.
