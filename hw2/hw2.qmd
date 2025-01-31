@@ -197,8 +197,32 @@ Display the first 10 lines of the new file `labevents_filtered.csv.gz`. How many
 **Solution:**
 
 ```{bash}
-
+#| eval: false
+zcat < ~/mimic/hosp/labevents.csv.gz | 
+awk -F',' 'NR==1 || $5 ~ /50912|50971|50983|50902|50882|51221|51301|50931/' |
+cut -d',' -f2,5,7,10 |
+gzip > ~/mimic/hosp/labevents_filtered.csv.gz
 ```
+
+Display the first 10 lines of the new file:
+```{bash}
+zcat ~/mimic/hosp/labevents_filtered.csv.gz | head -10
+```
+
+Count the number of lines in the new file, excluding the header:
+```{bash}
+zcat ~/mimic/hosp/labevents_filtered.csv.gz |
+tail -n +2| 
+wc -l
+```
+
+Time for `read_csv` to ingest filtered file:
+```{r}
+file_path <- "~/mimic/hosp/labevents_filtered.csv.gz"
+
+system.time(labevents <- read_csv(file_path, show_col_types = FALSE))
+```
+It took about 21 seconds for `read_csv` to ingest the filtered file.
 
 ### Q2.4 Ingest `labevents.csv` by Apache Arrow
 
