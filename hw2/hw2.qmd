@@ -176,8 +176,7 @@ Try to ingest only columns `subject_id`, `itemid`, `charttime`, and `valuenum` i
 
 Note: `eval=FALSE` is set to avoid program crashing during rendering.
 ```{r, eval=FALSE}
-labevent_selected_cols <- read_csv(file_path, col_select=c("subject_id","itemid",
-                            "charttime","valuenum"))
+read_csv(file_path, col_select=c("subject_id","itemid", "charttime","valuenum"))
 ```
 
 My RStudio program crashed again. Even after selecting specific columns, the program still needs to process large size file and it crashes after exceeding maximum memory of my laptop.
@@ -210,19 +209,23 @@ zcat ~/mimic/hosp/labevents_filtered.csv.gz | head -10
 ```
 
 Count the number of lines in the new file, excluding the header:
-```{bash}
+
+Note: Caching is used here to avoid long running and memory overload issue during rendering.
+```{bash, cache=TRUE}
 zcat ~/mimic/hosp/labevents_filtered.csv.gz |
 tail -n +2| 
 wc -l
 ```
 
 Time for `read_csv` to ingest filtered file:
-```{r}
+
+Note: Caching is used here to avoid long running and memory overload issue during rendering.
+```{r, cache=TRUE}
 file_path <- "~/mimic/hosp/labevents_filtered.csv.gz"
 
 system.time(labevents <- read_csv(file_path, show_col_types = FALSE))
 ```
-It took about 21 seconds for `read_csv` to ingest the filtered file.
+It took about 25 seconds for `read_csv` to ingest the filtered file.
 
 ### Q2.4 Ingest `labevents.csv` by Apache Arrow
 
@@ -242,7 +245,8 @@ Write a few sentences to explain what is Apache Arrow. Imagine you want to expla
 #| eval: false
 gunzip -c ~/mimic/hosp/labevents.csv.gz > ./labevents.csv
 ```
-```{r}
+Note: Caching is used here to avoid long running and memory overload issue during rendering.
+```{r, cache=TRUE}
 system.time({
   labevents <- open_dataset("labevents.csv", format = "csv")
 
@@ -253,7 +257,7 @@ system.time({
 })
 ```
 
-It takes 46 seconds to ingest, select, and filter content in `labevents.csv`.
+It takes 64 seconds to ingest, select, and filter content in `labevents.csv`.
 
 Display the number of rows:
 ```{r}
@@ -265,6 +269,12 @@ Display first 10 rows of the result tibble:
 head(labevents_arrow, 10)
 ```
 The number of lines and the first 10 rows of the result tibble matches those in Q2.3
+
+Note: `labevents_arrow` is removed after printing the first 10 rows to save memory and avoid out of memory issue during rendering.
+```{r}
+rm(labevents_arrow)
+gc() # Force garbage collection
+```
 
 Apache Arrow is a lightning-fast data processing framework that allows efficient handling of large datasets without loading everything into memory. It does this by using a columnar in-memory format, which makes operations like filtering and selecting data extremely fast. 
 Think of it as a highway for data—allowing seamless, high-speed movement between different tools like R, Python, and databases. Instead of copying data between systems (which slows things down), Arrow lets them share the same memory, making everything much more efficient.
@@ -279,22 +289,28 @@ Re-write the csv file `labevents.csv` in the binary Parquet format (Hint: [`arro
 
 Write a few sentences to explain what is the Parquet format. Imagine you want to explain it to a layman in an elevator.
 
+
 **Solution:**
 
 Re-write the csv file in the binary Parquet format:
-```{r}
+
+Note: `eval` is set to `FALSE` to avoid long running time in rendering
+```{r, eval=FALSE}
 labevents <- open_dataset("labevents.csv", format = "csv")
 
 write_dataset(labevents, "labevents_parquet", format = "parquet")
 ```
 
 ```{bash}
-ls -l -h labevents_parquet
+ls -lh labevents_parquet
 ```
 The Parquet file is 2.6G.
 
 Ingest, select, and filter Parquet file:
-```{r}
+
+Note: `cache` is used to save rendering time.
+
+```{r, cache=TRUE}
 system.time({
   labevents_parquet <- open_dataset("labevents_parquet", format = "parquet")
 
@@ -305,7 +321,7 @@ system.time({
 })
 ```
 
-It took 19 seconds to ingest, select, and filter Parquet file.
+It took 11 seconds to ingest, select, and filter Parquet file.
 
 Display the number of rows:
 ```{r}
@@ -333,7 +349,8 @@ Write a few sentences to explain what is DuckDB. Imagine you want to explain it 
 
 **Solution:**
 
-```{r}
+Note: `cache` is used to reduce rendering time.
+```{r, cache=TRUE}
 system.time({
   # Ingest Parquet dataset
   labevents_parquet <- open_dataset("labevents_parquet", format = "parquet")
@@ -352,7 +369,7 @@ system.time({
   dbDisconnect(con)
 })
 ```
-It took 14 seconds to ingest Parquet file, select columns, and filter rows.
+It took 19 seconds to ingest Parquet file, select columns, and filter rows.
 
 Display the number of rows:
 ```{r}
@@ -364,6 +381,12 @@ head(labevents_filtered_parquet, 10)
 ```
 This confirms that DuckDB generated file matches those in Q2.3.
 
+Note: `labevents_filtered_parquet` is removed after printing the first 10 rows to save memory and avoid out of memory issue during rendering.
+```{r}
+rm(labevents_filtered_parquet)
+gc()
+```
+
 DuckDB is a fast, lightweight database designed for efficient data analysis on a single machine. Unlike traditional databases that optimize for many users, DuckDB is built for analytics—it processes large datasets blazingly fast using an optimized columnar format. 
 It’s like having the power of a full-fledged database engine without needing a server. Imagine Excel on steroids, where queries run instantly, and we can work with billions of rows seamlessly.
 
@@ -374,10 +397,12 @@ It’s like having the power of a full-fledged database engine without needing a
 zcat < ~/mimic/icu/chartevents.csv.gz | head -10
 ```
 How many rows? 433 millions.
+
 ```{bash}
 #| eval: false
 zcat < ~/mimic/icu/chartevents.csv.gz | tail -n +2 | wc -l
 ```
+
 [`d_items.csv.gz`](https://mimic.mit.edu/docs/iv/modules/icu/d_items/) is the dictionary for the `itemid` in `chartevents.csv.gz`.
 ```{bash}
 zcat < ~/mimic/icu/d_items.csv.gz | head -10
@@ -395,7 +420,9 @@ gunzip -c ~/mimic/icu/chartevents.csv.gz > chartevents.csv
 ```
 
 Compress `chartevents.csv` to Parquet format:
-```{r}
+
+Note: `eval` is set to `FALSE` to reduce long rendering time and avoid memery overload.
+```{r, eval=FALSE}
 chartevents <- open_dataset("chartevents.csv", format = "csv")
 
 write_dataset(chartevents, path = "chartevents_parquet", format = "parquet")
