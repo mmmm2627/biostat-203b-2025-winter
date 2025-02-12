@@ -26,6 +26,9 @@ library(memuse)
 library(pryr)
 library(R.utils)
 library(tidyverse)
+library(data.table)
+library(arrow)
+library(dplyr)
 ```
 
 Display your machine memory.
@@ -50,10 +53,46 @@ Hint: We need to pull information from data files `patients.csv.gz`, `admissions
 
 **Solution:**
 
+Read info from `patients.csv.gz` with `subject_id = 10063848`:
 ```{r}
+file_path <- '~/mimic/hosp/patients.csv.gz'
 
+patient <- fread(file_path)
+patient <- patient[subject_id == 10063848]
+patient
 ```
 
+Read info from `admissions.csv.gz`:
+```{r}
+file_path <- '~/mimic/hosp/admissions.csv.gz'
+
+admissions <- fread(file_path)
+admissions <- admissions[subject_id == 10063848]
+admissions
+```
+
+Read info from `transfers.csv.gz`.
+```{r}
+file_path <- '~/mimic/hosp/transfers.csv.gz'
+
+transfers <- fread(file_path)
+transfers <- transfers[subject_id == 10063848]
+transfers
+```
+
+Read info from `labevents.csv.gz`:
+```{r}
+labevents <- open_dataset("labevents_pq", format = "parquet")
+
+labevents <- labevents %>%
+  filter(subject_id == 10063848) %>%
+  collect()
+```
+
+Read info from `procedures_icd.csv.gz`:
+```{r}
+file_path <- '
+```
 
 ### Q1.2 ICU stays
 
