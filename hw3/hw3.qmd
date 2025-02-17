@@ -29,6 +29,8 @@ library(tidyverse)
 library(data.table)
 library(arrow)
 library(dplyr)
+library(lubridate)
+library(ggplot2)
 ```
 
 Display your machine memory.
@@ -53,46 +55,177 @@ Hint: We need to pull information from data files `patients.csv.gz`, `admissions
 
 **Solution:**
 
-Read info from `patients.csv.gz` with `subject_id = 10063848`:
+Read info with `subject_id = 10063848`:
 ```{r}
+id <- 10063848
+
+# Read info from patients.csv.gz
 file_path <- '~/mimic/hosp/patients.csv.gz'
-
 patient <- fread(file_path)
-patient <- patient[subject_id == 10063848]
-patient
-```
+patient <- patient[subject_id == id]
 
-Read info from `admissions.csv.gz`:
-```{r}
+# Read info from admissions.csv.gz
 file_path <- '~/mimic/hosp/admissions.csv.gz'
-
 admissions <- fread(file_path)
-admissions <- admissions[subject_id == 10063848]
-admissions
-```
+admissions <- admissions[subject_id == id]
 
-Read info from `transfers.csv.gz`.
-```{r}
+# Read info from transfers.csv.gz
 file_path <- '~/mimic/hosp/transfers.csv.gz'
-
 transfers <- fread(file_path)
-transfers <- transfers[subject_id == 10063848]
-transfers
-```
+transfers <- transfers[subject_id == id]
 
-Read info from `labevents.csv.gz`:
-```{r}
+# Read info from labevents.csv.gz
 labevents <- open_dataset("labevents_pq", format = "parquet")
-
 labevents <- labevents %>%
-  filter(subject_id == 10063848) %>%
+  filter(subject_id == id) %>%
   collect()
+
+# Read info from procedures_icd.csv.gz
+file_path <- '~/mimic/hosp/procedures_icd.csv.gz'
+procedures <- fread(file_path)
+procedures <- procedures[subject_id == id]
+
+# Read info from diagnoses_icd.csv.gz, d_icd_procedures.csv.gz, d_icd_diagnoses.csv.gz
+file_paths <- c('~/mimic/hosp/diagnoses_icd.csv.gz',
+                '~/mimic/hosp/d_icd_procedures.csv.gz',
+                '~/mimic/hosp/d_icd_diagnoses.csv.gz')
+diagnoses <- fread(file_paths[1]) %>%
+  filter(subject_id == id)
+
+d_icd_procedures <- fread(file_paths[2])
+d_icd_diagnoses <- fread(file_paths[3])
 ```
 
-Read info from `procedures_icd.csv.gz`:
+Merge information needed for the plot:
 ```{r}
-file_path <- '
+# X-axis: Calender time
+# Y-axis: type of event (ADT, lab, procedure)
+# Legend: color of line segment (care unit), size (whether ICU or not)
+# Legend: crosses of line (lab events)
+# Legend: shape of procedure plot (type of procedure)
+# Title: patient ID, gender, age, race
+# Subtitle: top 3 diagnoses
+
+# Patient information
+patient_info <- patient |> 
+  left_join(admissions, by = "subject_id") |> # get race from admissions
+  select(subject_id, gender, anchor_age, race) |>
+  distinct()
+
+# Get top 3 diagnoses
+top_3_diagnoses <- diagnoses |>
+  count(icd_code, sort = TRUE) |>
+  arrange(desc(n)) |>
+  head(3) |>
+  left_join(d_icd_diagnoses, by = "icd_code") |>
+  select(long_title)
+# top_3_diagnoses_str <- paste(top_3_diagnoses$long_title, collapse = ', ')
+
+# Prepare Lab Events
+Lab <- labevents |> 
+  select(subject_id, charttime) |>
+  rename(event_time = charttime) |>
+  mutate(event_type = "Lab",
+         event_time = as_date(event_time))
+
+# Prepare ADT
+ADT <- transfers |>
+  select(subject_id, careunit, intime, outtime) |>
+  mutate(
+    intime = as_date(ymd_hms(intime)),  # Convert to date
+    outtime = as_date(ymd_hms(outtime)),  # Convert to date
+    event_type = "ADT",
+    is_icu = ifelse(careunit == "Surgical Intensive Care Unit (SICU)", 
+                    TRUE, FALSE)
+  )
+
+# Prepare Procedures
+proc <- procedures |>
+  select(subject_id, chartdate, icd_code) |>
+  left_join(d_icd_procedures, by = 'icd_code') |>
+  rename(event_time = chartdate,
+         procedure_type = long_title) |>
+  mutate(event_type = "Procedures",
+         event_time = as_date(event_time))
+
+# Combine all events into single dataset
+events <- bind_rows(
+  ADT |> select(subject_id, event_time = intime, event_type, careunit, is_icu),
+  ADT |> select(subject_id, event_time = outtime, event_type, careunit, is_icu),
+  Lab |> select(subject_id, event_time, event_type),
+  proc |> select(subject_id, event_time, event_type, procedure_type)
+) |>
+  mutate (event_type = factor(
+    event_type, levels = c("ADT", "Lab", "Procedure")
+  ))
 ```
+
+Plot the figure:
+```{r}
+plot_title <- paste(
+  "Patient ", patient_info$subject_id, 
+  ", ", patient_info$gender, 
+  ", ", patient_info$anchor_age, 
+  " years old, ", tolower(patient_info$race)
+)
+plot_subtitle <- paste(
+  top_3_diagnoses$long_title[1], "\n",
+  top_3_diagnoses$long_title[2], "\n",
+  top_3_diagnoses$long_title[3],
+  sep = ""
+)
+```
+
+```{r fig.align="center", fig.width = 8, dpi=250, warning=FALSE}
+ggplot(events, 
+       aes(x = event_time, y = event_type)) +
+  
+  # ADT as line segment
+  geom_segment(
+    data = ADT,
+    aes(x = intime, xend = outtime, y = event_type, yend = event_type, 
+        color = careunit, linewidth = as.factor(is_icu))) +
+  
+  # Lab Events as Crosses
+  geom_point(
+    data = Lab,
+    aes(x = event_time, y = event_type),
+    shape = 3, size = 2) +
+
+  # Procedure Events as different shapes
+  geom_point(
+    data = proc,
+    aes(x = event_time, y = event_type, shape = procedure_type),
+    size = 3) +
+  
+  # Formatting
+  labs(
+    title = plot_title,
+    subtitle = plot_subtitle,
+    x = "Calender Time",
+    y = NULL
+  ) +
+
+  # Legend settings: color and shape
+  guides(
+    # Removes the legend for the line thickness (linewidth)
+    linewidth = "none", 
+    # Title for color legend
+    color = guide_legend(title = "Care Unit", nrow = 2),  
+    # Title for shape legend
+    shape = guide_legend(title = "Procedure", nrow = 3)  
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.box = "vertical",  # Stack legends horizontally
+    legend.text = element_text(size = 6),
+    legend.spacing.y = unit(0.1, "cm"),
+    axis.text.x = element_text(hjust = 1)
+  )
+```
+
 
 ### Q1.2 ICU stays
 
@@ -101,6 +234,16 @@ ICU stays are a subset of ADT history. This figure shows the vitals of the patie
 ![](10001217_icu.png)
 
 Do a similar visualization for the patient `10063848`.
+
+**Solution:**
+
+```{r}
+# x-axis: calender time
+# y-axis: value of vitals
+# color: type of vitals
+# facet grid: stay ID
+```
+
 
 ## Q2. ICU stays
 
