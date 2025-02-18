@@ -88,7 +88,8 @@ file_path <- '~/mimic/hosp/procedures_icd.csv.gz'
 procedures <- fread(file_path)
 procedures <- procedures[subject_id == id]
 
-# Read info from diagnoses_icd.csv.gz, d_icd_procedures.csv.gz, d_icd_diagnoses.csv.gz
+# Read info from diagnoses_icd.csv.gz, d_icd_procedures.csv.gz, 
+# d_icd_diagnoses.csv.gz
 file_paths <- c('~/mimic/hosp/diagnoses_icd.csv.gz',
                 '~/mimic/hosp/d_icd_procedures.csv.gz',
                 '~/mimic/hosp/d_icd_diagnoses.csv.gz')
@@ -359,6 +360,13 @@ zcat < ~/mimic/hosp/admissions.csv.gz | head
 
 Import `admissions.csv.gz` as a tibble `admissions_tble`.
 
+**Solution:**
+```{r}
+# Read info from admissions.csv.gz
+file_path <- "~/mimic/hosp/admissions.csv.gz"
+admissions_tble <- fread(file_path) |> as_tibble()
+```
+
 ### Q3.2 Summary and visualization
 
 Summarize the following information by graphics and explain any patterns you see.
@@ -371,6 +379,76 @@ Summarize the following information by graphics and explain any patterns you see
 According to the [MIMIC-IV documentation](https://mimic.mit.edu/docs/iv/about/concepts/#date-shifting), 
 
 > All dates in the database have been shifted to protect patient confidentiality. Dates will be internally consistent for the same patient, but randomly distributed in the future. Dates of birth which occur in the present time are not true dates of birth. Furthermore, dates of birth which occur before the year 1900 occur if the patient is older than 89. In these cases, the patient’s age at their first admission has been fixed to 300.
+
+**Solution:**
+```{r}
+admissions_tble_count <- admissions_tble |>
+  group_by(subject_id) |>
+  summarise(num_admissions = n()) |>
+  ungroup()
+
+admissions_tble <- admissions_tble |>
+  mutate(admittime = ymd_hms(admittime),
+         dischtime = ymd_hms(dischtime),
+         admission_hour = hour(admittime),
+         admission_minute = minute(admittime),
+         los_days = as.numeric(dischtime - admittime, units = "days"))
+```
+
+Visualizations of information:
+```{r, warning=FALSE}
+# number of admissions per patient
+ggplot(admissions_tble_count, aes(x = num_admissions)) +
+  geom_histogram() +
+  labs(
+    title = "Distribution of Number of admissions per Patient",
+    x = "Number of admissions",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+The number of admission per patient is right skewed.
+
+```{r}
+# admission hour
+ggplot(admissions_tble, aes(x = admission_hour)) +
+  geom_histogram(bins = 24) +
+  labs(
+    title = "Distribution of Admission Hour",
+    x = "Admission Hour",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+In general, admissions decrease from 12 AM to 10 AM and then rise again until midnight, peaking around 6 PM. Interestingly, there is a noticeable spike in admissions at 7 AM compared to the surrounding hours.
+
+
+```{r, warning=FALSE}
+# admission minute
+ggplot(admissions_tble, aes(x = admission_minute)) +
+  geom_histogram(bins = 60) +
+  labs(
+    title = "Distribution of Admission Minute",
+    x = "Admission Minute",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+In general, admission minutes are uniformly distributed. 
+However, there are noticeable spikes at whole hours, as well as at the 15-minute, 30-minute, and 45-minute marks.
+
+```{r, warning=FALSE}
+# length of hospital stay
+ggplot(admissions_tble, aes(x = los_days)) +
+  geom_histogram(binwidth = 20) +
+  labs(
+    title = "Distribution of Length of Hospital Stay",
+    x = "Length of Stays (Days)",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+Length of stays distribution is right skewed.
 
 ## Q4. `patients` data
 
