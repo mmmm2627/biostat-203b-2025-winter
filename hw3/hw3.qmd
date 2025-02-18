@@ -247,11 +247,6 @@ Read info with `subject_id = 10063848`:
 ```{r}
 id <- 10063848
 
-# Read info from icustays.csv.gz
-file_path <- "~/mimic/icu/icustays.csv.gz"
-icustays <- fread(file_path)
-icustays <- icustays[subject_id == id]
-
 # Read info from d_items.csv.gz
 file_path <- "~/mimic/icu/d_items.csv.gz"
 d_items <- fread(file_path)
@@ -272,32 +267,12 @@ dbDisconnect(con)
 
 Merge information for plotting:
 ```{r}
-# Stay information
-icustays_info <- icustays |>
-  select(subject_id, stay_id, intime, outtime)
-
 # vitals information
 vitals <- chartevents |>
   left_join(d_items, by = "itemid") |>
   filter(abbreviation %in% c("HR", "NBPd", "NBPs", "RR", "Temperature F")) |>
   select(subject_id, stay_id, charttime, value, abbreviation) |>
   mutate(charttime = as.POSIXct(charttime, format = "%Y-%m-%d %H:%M:%S"))
-
-# icustays_vitals <- icustays_info |>
-#   merge(vitals, by = c("subject_id", "stay_id"))
-```
-
-
-```{r}
-compute_breaks <- function(data) {
-  # Find the range and set appropriate breaks
-  min_value <- min(data$value, na.rm = TRUE)
-  max_value <- max(data$value, na.rm = TRUE)
-  range_value <- max_value - min_value
-  # Adjust step size based on the range of values
-  step_size = ceiling(range_value / (max_value - min_value) * 5)
-  return(seq(min_value, max_value, by = step_size))
-}
 ```
 
 ```{r plot ICU stays, fig.align="center", fig.width = 10, fig.height = 10, dpi=250, warning=FALSE}
@@ -329,7 +304,6 @@ ggplot(vitals, aes(x = charttime, y = value, group = abbreviation,
   scale_y_discrete(breaks = function(x) x[seq(1, length(x), by = 5)])
 ```
 
-
 ## Q2. ICU stays
 
 `icustays.csv.gz` (<https://mimic.mit.edu/docs/iv/modules/icu/icustays/>) contains data about Intensive Care Units (ICU) stays. The first 10 lines are
@@ -341,9 +315,38 @@ zcat < ~/mimic/icu/icustays.csv.gz | head
 
 Import `icustays.csv.gz` as a tibble `icustays_tble`. 
 
+**Solution:**
+```{r}
+# Read info from icustays.csv.gz
+file_path <- "~/mimic/icu/icustays.csv.gz"
+icustays_tble <- fread(file_path) |> as_tibble()
+```
+
 ### Q2.2 Summary and visualization
 
 How many unique `subject_id`? Can a `subject_id` have multiple ICU stays? Summarize the number of ICU stays per `subject_id` by graphs. 
+
+**Solution:**
+```{r}
+length(unique(icustays_tble$subject_id))
+```
+There are 65366 unique `subject_id`.
+
+```{r, warning=FALSE}
+icustays_tble_count <- icustays_tble |>
+  group_by(subject_id) |>
+  summarise(num_stays = n()) |>
+  ungroup()
+
+ggplot(icustays_tble_count, aes(x = num_stays)) +
+  geom_histogram(binwidth = 1) +
+  labs(
+    title = "Distribution of number of ICU Stays per Subject",
+    x = "Number of ICU Stays",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
 
 ## Q3. `admissions` data
 
