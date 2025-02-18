@@ -31,6 +31,9 @@ library(arrow)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
+library(DBI)
+library(duckdb)
+library(scales)
 ```
 
 Display your machine memory.
@@ -145,7 +148,7 @@ proc <- procedures |>
   left_join(d_icd_procedures, by = 'icd_code') |>
   rename(event_time = chartdate,
          procedure_type = long_title) |>
-  mutate(event_type = "Procedures",
+  mutate(event_type = "Procedure",
          event_time = as_date(event_time))
 
 # Combine all events into single dataset
@@ -176,9 +179,17 @@ plot_subtitle <- paste(
 )
 ```
 
-```{r fig.align="center", fig.width = 8, dpi=250, warning=FALSE}
+```{r plot ADT, fig.align="center", fig.width = 8, dpi=250, warning=FALSE}
 ggplot(events, 
        aes(x = event_time, y = event_type)) +
+  
+  scale_y_discrete(limits = c("Procedure", "Lab", "ADT")) +
+  
+  # Procedure Events as different shapes
+  geom_point(
+    data = proc,
+    aes(x = event_time, y = event_type, shape = procedure_type),
+    size = 3) +
   
   # ADT as line segment
   geom_segment(
@@ -191,29 +202,25 @@ ggplot(events,
     data = Lab,
     aes(x = event_time, y = event_type),
     shape = 3, size = 2) +
-
-  # Procedure Events as different shapes
-  geom_point(
-    data = proc,
-    aes(x = event_time, y = event_type, shape = procedure_type),
-    size = 3) +
   
   # Formatting
   labs(
     title = plot_title,
     subtitle = plot_subtitle,
     x = "Calender Time",
-    y = NULL
+    y = NULL,
+    color = "Care Unit",
+    shape = "Procedure"
   ) +
 
   # Legend settings: color and shape
   guides(
     # Removes the legend for the line thickness (linewidth)
     linewidth = "none", 
-    # Title for color legend
-    color = guide_legend(title = "Care Unit", nrow = 2),  
     # Title for shape legend
-    shape = guide_legend(title = "Procedure", nrow = 3)  
+    shape = guide_legend(title = "Procedure", nrow = 3, order = 2),
+    # Title for color legend
+    color = guide_legend(title = "Care Unit", nrow = 2, order = 1)
   ) +
   
   theme_minimal() +
@@ -221,11 +228,10 @@ ggplot(events,
     legend.position = "bottom",
     legend.box = "vertical",  # Stack legends horizontally
     legend.text = element_text(size = 6),
-    legend.spacing.y = unit(0.1, "cm"),
+    # legend.spacing.y = unit(0.1, "cm"),
     axis.text.x = element_text(hjust = 1)
   )
 ```
-
 
 ### Q1.2 ICU stays
 
@@ -237,11 +243,90 @@ Do a similar visualization for the patient `10063848`.
 
 **Solution:**
 
+Read info with `subject_id = 10063848`:
 ```{r}
+id <- 10063848
+
+# Read info from icustays.csv.gz
+file_path <- "~/mimic/icu/icustays.csv.gz"
+icustays <- fread(file_path)
+icustays <- icustays[subject_id == id]
+
+# Read info from d_items.csv.gz
+file_path <- "~/mimic/icu/d_items.csv.gz"
+d_items <- fread(file_path)
+```
+
+```{r, cache=TRUE}
+# Read info from chartevents.csv.gz
+con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+
+chartevents <- dbGetQuery(con, "
+  SELECT subject_id, stay_id, charttime, itemid, value
+  FROM read_csv_auto('~/mimic/icu/chartevents.csv.gz')
+  WHERE subject_id = 10063848
+")
+
+dbDisconnect(con)
+```
+
+Merge information for plotting:
+```{r}
+# Stay information
+icustays_info <- icustays |>
+  select(subject_id, stay_id, intime, outtime)
+
+# vitals information
+vitals <- chartevents |>
+  left_join(d_items, by = "itemid") |>
+  filter(abbreviation %in% c("HR", "NBPd", "NBPs", "RR", "Temperature F")) |>
+  select(subject_id, stay_id, charttime, value, abbreviation) |>
+  mutate(charttime = as.POSIXct(charttime, format = "%Y-%m-%d %H:%M:%S"))
+
+# icustays_vitals <- icustays_info |>
+#   merge(vitals, by = c("subject_id", "stay_id"))
+```
+
+
+```{r}
+compute_breaks <- function(data) {
+  # Find the range and set appropriate breaks
+  min_value <- min(data$value, na.rm = TRUE)
+  max_value <- max(data$value, na.rm = TRUE)
+  range_value <- max_value - min_value
+  # Adjust step size based on the range of values
+  step_size = ceiling(range_value / (max_value - min_value) * 5)
+  return(seq(min_value, max_value, by = step_size))
+}
+```
+
+```{r plot ICU stays, fig.align="center", fig.width = 10, fig.height = 10, dpi=250, warning=FALSE}
 # x-axis: calender time
 # y-axis: value of vitals
 # color: type of vitals
 # facet grid: stay ID
+
+ggplot(vitals, aes(x = charttime, y = value, group = abbreviation,
+                   color = abbreviation)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(abbreviation ~ stay_id, scales = "free") +
+  
+  labs(
+    title = paste("Patient", unique(vitals$subject_id), 
+                  "ICU stays - Vitals", sep = " ")
+  ) +
+  
+  theme_light() +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  
+  scale_x_datetime(date_labels = "%b %d %H:%M") +
+  scale_y_discrete(breaks = function(x) x[seq(1, length(x), by = 5)])
 ```
 
 
