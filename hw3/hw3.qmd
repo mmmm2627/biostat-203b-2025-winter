@@ -496,6 +496,14 @@ The distribution of Anchor Age peaks in the early years, then decreases from 25 
 followed by a slight increase before steadily declining from 40 to 80 years. 
 Interestingly, there is an outlier with an extremely high value for both male and female patients.
 
+```{r clear unneeded variables}
+rm(admissions, ADT, chartevents, con, d_icd_diagnoses, d_icd_procedures,
+   diagnoses, events, Lab, labevents, patient, patient_info, proc,
+   procedures, top_3_diagnoses, transfers, vitals)
+gc()
+```
+
+
 ## Q5. Lab results
 
 `labevents.csv.gz` (<https://mimic.mit.edu/docs/iv/modules/hosp/labevents/>) contains all laboratory measurements for patients. The first 10 lines are
@@ -514,6 +522,23 @@ We are interested in the lab measurements of creatinine (50912), potassium (5097
 
 
 Hint: Use the Parquet format you generated in Homework 2. For reproducibility, make `labevents_pq` folder available at the current working directory `hw3`, for example, by a symbolic link.
+
+**Solution:**
+```{r}
+labevents <- open_dataset("labevents_pq", format = "parquet")
+```
+
+```{r}
+itemids <- c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)
+patients <- unique(icustays_tble$subject_id)
+
+labevents_tble <- labevents |>
+  filter(itemid %in% itemids,
+         subject_id %in% patients) |>
+  collect() |>
+  as_tibble()
+```
+
 
 ## Q6. Vitals from charted events
 
