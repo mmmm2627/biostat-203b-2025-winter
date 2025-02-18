@@ -392,7 +392,8 @@ admissions_tble <- admissions_tble |>
          dischtime = ymd_hms(dischtime),
          admission_hour = hour(admittime),
          admission_minute = minute(admittime),
-         los_days = as.numeric(dischtime - admittime, units = "days"))
+         los_days = as.numeric(dischtime - admittime, units = "days"),
+         los_hours = as.numeric(dischtime - admittime, units = "hours"))
 ```
 
 Visualizations of information:
@@ -440,7 +441,7 @@ However, there are noticeable spikes at whole hours, as well as at the 15-minute
 ```{r, warning=FALSE}
 # length of hospital stay
 ggplot(admissions_tble, aes(x = los_days)) +
-  geom_histogram(binwidth = 20) +
+  geom_histogram() +
   labs(
     title = "Distribution of Length of Hospital Stay",
     x = "Length of Stays (Days)",
@@ -448,7 +449,7 @@ ggplot(admissions_tble, aes(x = los_days)) +
   ) +
   theme_minimal()
 ```
-Length of stays distribution is right skewed.
+Length of stays distribution is right skewed. No unusual pattern identified.
 
 ## Q4. `patients` data
 
@@ -460,10 +461,40 @@ zcat < ~/mimic/hosp/patients.csv.gz | head
 ### Q4.1 Ingestion
 
 Import `patients.csv.gz` (<https://mimic.mit.edu/docs/iv/modules/hosp/patients/>) as a tibble `patients_tble`.
+```{r}
+# import patients.csv.gz
+file_path <- "~/mimic/hosp/patients.csv.gz"
+patients_tble <- fread(file_path) |> as_tibble()
+```
 
 ### Q4.2 Summary and visualization
 
 Summarize variables `gender` and `anchor_age` by graphics, and explain any patterns you see.
+```{r}
+# summarize gender
+ggplot(patients_tble, aes(x = gender)) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Gender",
+    x = "Gender"
+  ) +
+  theme_minimal()
+```
+There are slightly more female patients than male patients.
+
+```{r}
+# summarize anchor_age
+ggplot(patients_tble) +
+  geom_histogram(aes(x = anchor_age, fill = gender), binwidth = 1) +
+  labs(
+    title = "Distribution of Anchor Year by Gender",
+    x = "Anchor Year"
+  ) +
+  theme_minimal()
+```
+The distribution of Anchor Age peaks in the early years, then decreases from 25 to 40, 
+followed by a slight increase before steadily declining from 40 to 80 years. 
+Interestingly, there is an outlier with an extremely high value for both male and female patients.
 
 ## Q5. Lab results
 
