@@ -8,6 +8,8 @@ test*
 *.csv
 *_parquet
 
+# HW3 files
+*_pq
 
 # History files
 .Rhistory
