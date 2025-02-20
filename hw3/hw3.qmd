@@ -349,6 +349,14 @@ ggplot(icustays_tble_count, aes(x = num_stays)) +
   theme_minimal()
 ```
 
+```{r clean unneeded variables}
+rm(ADT, chartevents, con, d_icd_diagnoses, d_icd_procedures,
+   d_items, diagnoses, events, icustays_tble_count, Lab, labevents,
+   patient, patient_info, proc, procedures, top_3_diagnoses, transfers, 
+   vitals, admissions)
+gc()
+```
+
 ## Q3. `admissions` data
 
 Information of the patients admitted into hospital is available in `admissions.csv.gz`. See <https://mimic.mit.edu/docs/iv/modules/hosp/admissions/> for details of each field in this file. The first 10 lines are
@@ -496,14 +504,6 @@ The distribution of Anchor Age peaks in the early years, then decreases from 25 
 followed by a slight increase before steadily declining from 40 to 80 years. 
 Interestingly, there is an outlier with an extremely high value for both male and female patients.
 
-```{r clear unneeded variables}
-rm(admissions, ADT, chartevents, con, d_icd_diagnoses, d_icd_procedures,
-   diagnoses, events, Lab, labevents, patient, patient_info, proc,
-   procedures, top_3_diagnoses, transfers, vitals)
-gc()
-```
-
-
 ## Q5. Lab results
 
 `labevents.csv.gz` (<https://mimic.mit.edu/docs/iv/modules/hosp/labevents/>) contains all laboratory measurements for patients. The first 10 lines are
@@ -643,20 +643,18 @@ chartevents_tble <- open_dataset("chartevents_pq", format = "parquet") |>
   collect() |>
   as_tibble()
 ```
+
 ```{r}
 chartevents_tble <- chartevents_tble |>
   rename_at(
     vars(names(rename_vec)),  # Select columns to rename
     ~ rename_vec[.]  # Apply renaming function
-  )
-
-chartevents_tble <- chartevents_tble |>
+  ) |>
   arrange(subject_id, stay_id) |>
   select(
     subject_id, stay_id, heart_rate, non_invasive_blood_pressure_diastolic,
     non_invasive_blood_pressure_systolic, respiratory_rate, 
     temperature_fahrenheit)
-)
 ```
 
 ```{r}
@@ -678,10 +676,6 @@ The final `mimic_icu_cohort` should have one row per ICU stay and columns for ea
 ![](mimic_icu_cohort.png)
 
 **Solution:**
-```{r}
-file_path <- "~/mimic/hosp/patients.csv.gz"
-patients_tble <- fread(file_path)
-```
 
 ```{r}
 mimic_icu_cohort <- icustays_tble |>
@@ -727,7 +721,7 @@ los_race_summary <- mimic_icu_cohort %>%
 los_race_summary
 ```
 
-```{r}
+```{r, warning=FALSE}
 # Length of ICU stay vs. insurance
 ggplot(mimic_icu_cohort, aes(x = insurance, y = los, fill = insurance)) +
   geom_boxplot() +
@@ -751,7 +745,7 @@ los_insurance_summary <- mimic_icu_cohort %>%
 los_insurance_summary
 ```
 
-```{r}
+```{r, warning=FALSE}
 # Length of ICU stay vs. marital_status
 los_marital_status_summary <- mimic_icu_cohort %>%
   mutate(marital_status = ifelse(
@@ -778,7 +772,7 @@ ggplot(mimic_icu_cohort, aes(x = marital_status, y = los,
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-```{r}
+```{r, warning=FALSE}
 # Length of ICU stay vs. gender
 los_gender_summary <- mimic_icu_cohort %>%
   group_by(gender) %>%
@@ -809,7 +803,7 @@ ggplot(mimic_icu_cohort, aes(x = age_intime, y = los)) +
 ```
 
 Length of ICU stay `los` vs the last available lab measurements before ICU stay
-```{r}
+```{r, warning=FALSE}
 mimic_icu_cohort_long <- mimic_icu_cohort %>%
   pivot_longer(cols = c(bicarbonate, chloride, creatinine, glucose, 
                         potassium, sodium, hematocrit, wbc),
@@ -828,7 +822,7 @@ ggplot(mimic_icu_cohort_long, aes(x = lab_value, y = los)) +
 ```
 
 Length of ICU stay `los` vs the first vital measurements within the ICU stay
-```{r}
+```{r, warning=FALSE}
 mimic_icu_vitals_long <- mimic_icu_cohort %>%
   pivot_longer(cols = c(heart_rate, non_invasive_blood_pressure_systolic, 
                         non_invasive_blood_pressure_diastolic, 
@@ -842,11 +836,11 @@ ggplot(mimic_icu_vitals_long, aes(x = value, y = los)) +
   labs(title = "ICU Length of Stay vs. Vital measurement",
        x = "Vital Sign Value",
        y = "Length of Stay (days)") +
-  theme_minimal()  # Clean theme
+  theme_minimal()
 ```
 
 Length of ICU stay los vs first ICU unit
-```{r, fig.width=15, dpi=250}
+```{r, fig.width=15, dpi=250, warning=FALSE}
 ggplot(mimic_icu_cohort, 
        aes(x = first_careunit,  y = los, fill = first_careunit)) +
   geom_boxplot() + 
