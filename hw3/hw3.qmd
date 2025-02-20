@@ -525,18 +525,124 @@ Hint: Use the Parquet format you generated in Homework 2. For reproducibility, m
 
 **Solution:**
 ```{r}
-labevents <- open_dataset("labevents_pq", format = "parquet")
+itemids <- c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)
+
+file_path <- "~/mimic/hosp/d_labitems.csv.gz"
+d_labitems <- fread(file_path) |>
+  filter(itemid %in% itemids) |>
+  select(itemid, label)
+d_labitems
+
+rename_vec <- setNames(d_labitems$label, d_labitems$itemid)
 ```
 
 ```{r}
+open_dataset("labevents_pq", format = "parquet") |>
+  to_duckdb() |>
+  # only keep information needed from labevents
+  select(subject_id, itemid, storetime, valuenum) |>
+  # filter itemid
+  filter(itemid %in% itemids) |>
+  # merge with icustays to get stay information
+  left_join(
+    select(icustays_tble, subject_id, stay_id, intime),
+    by = c("subject_id"),
+    copy = TRUE # copy icustay table from memory to database
+  ) |>
+  # only keep labevents before the ICU stay
+  filter(storetime < intime) |>
+  # for each patient, icu stay, itemid combination
+  group_by(subject_id, stay_id, itemid) |>
+  # only keep the most recent labevent
+  slice_max(storetime, n = 1) |>
+  # discard storetime and intime
+  select(-storetime, -intime) |>
+  ungroup() |>
+  # record lab items to be columns
+  pivot_wider(names_from = itemid, values_from = valuenum) |>
+  # rename column names
+  rename(any_of(rename_vec))
+```
+
+```{r, cache=TRUE}
 itemids <- c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)
 patients <- unique(icustays_tble$subject_id)
 
 labevents_tble <- labevents |>
   filter(itemid %in% itemids,
          subject_id %in% patients) |>
-  collect() |>
-  as_tibble()
+  collect()
+```
+
+```{r}
+# Load the lab events (parquet) and icu stays into DuckDB
+con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+
+dbWriteTable(con, "icustays", icustays_tble)
+dbWriteTable(con, "labevents", labevents_tble)
+```
+
+```{r}
+rm(labevents_tble, patients)
+gc()
+```
+
+```{r}
+# Filter labevents based on storetime
+icu_filtered <- dbGetQuery(
+  con, "
+  SELECT icu.subject_id, icu.stay_id, lab.itemid, lab.storetime, lab.value
+  FROM labevents lab
+  INNER JOIN icustays icu
+  ON lab.subject_id = icu.subject_id and lab.hadm_id = icu.hadm_id
+  WHERE lab.storetime < icu.intime
+")
+
+
+
+dbWriteTable(con, "icu_filtered", icu_filtered, overwrite = TRUE)
+rm(icu_filtered)
+gc()
+
+# Get latest lab result for each (subject_id, stay_id)
+latest_labevents <- dbGetQuery(
+  con, "
+  SELECT subject_id, stay_id, itemid, value, MAX(storetime) AS latest_storetime
+  FROM icu_filtered
+  GROUP BY subject_id, stay_id, itemid, value"
+)
+
+dbWriteTable(con, "latest_labevents", latest_labevents, overwrite = TRUE)
+rm(latest_labevents)
+gc()
+
+# Pivot itemid to column for each stay_id
+pivoted_result <- dbGetQuery(
+  con, "
+    SELECT
+        subject_id,
+        stay_id,
+        MAX(CASE WHEN itemid = 50912 THEN value END) AS creatinine,
+        MAX(CASE WHEN itemid = 50971 THEN value END) AS potassium,
+        MAX(CASE WHEN itemid = 50983 THEN value END) AS sodium,
+        MAX(CASE WHEN itemid = 50902 THEN value END) AS chloride,
+        MAX(CASE WHEN itemid = 50882 THEN value END) AS bicarbonate,
+        MAX(CASE WHEN itemid = 51221 THEN value END) AS hematocrit,
+        MAX(CASE WHEN itemid = 51301 THEN value END) AS white_blood_cell_count,
+        MAX(CASE WHEN itemid = 50931 THEN value END) AS glucose
+    FROM
+        latest_labevents
+    GROUP BY
+        subject_id, stay_id
+    ORDER BY
+        subject_id, stay_id
+")
+
+head(pivoted_result)
+```
+
+```{r}
+dbDisconnect(con)
 ```
 
 
