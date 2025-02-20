@@ -1,3 +1,16 @@
+# HW1 files
+middle.sh
+pg42671.txt
+test*
+
+# HW2 files
+:memory
+*.csv
+*_parquet
+
+# HW3 files
+*_pq
+
 # History files
 .Rhistory
 .Rapp.history
