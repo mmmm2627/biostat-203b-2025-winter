@@ -709,3 +709,154 @@ Summarize the following information about the ICU stay cohort `mimic_icu_cohort`
 
 - Length of ICU stay `los` vs first ICU unit
 
+**Solution:**
+
+Length of ICU stay vs. demographic variables
+```{r}
+# Length of ICU stay vs. Race
+los_race_summary <- mimic_icu_cohort %>%
+  group_by(race) %>%
+  summarize(
+    count = n(),
+    mean_los = mean(los, na.rm = TRUE),
+    median_los = median(los, na.rm = TRUE),
+    IQR_los = IQR(los, na.rm = TRUE),
+    sd_los = sd(los, na.rm = TRUE),
+    .groups = "drop"
+  )
+los_race_summary
+```
+
+```{r}
+# Length of ICU stay vs. insurance
+ggplot(mimic_icu_cohort, aes(x = insurance, y = los, fill = insurance)) +
+  geom_boxplot() +
+  labs(
+    title = "ICU Length of Stay by Insurance Type", 
+    x = "Insurance", 
+    y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+los_insurance_summary <- mimic_icu_cohort %>%
+  group_by(insurance) %>%
+  summarize(
+    count = n(),
+    mean_los = mean(los, na.rm = TRUE),
+    median_los = median(los, na.rm = TRUE),
+    IQR_los = IQR(los, na.rm = TRUE),
+    sd_los = sd(los, na.rm = TRUE),
+    .groups = "drop"
+  )
+los_insurance_summary
+```
+
+```{r}
+# Length of ICU stay vs. marital_status
+los_marital_status_summary <- mimic_icu_cohort %>%
+  mutate(marital_status = ifelse(
+    marital_status == "", "OTHER", marital_status)) %>%
+  group_by(marital_status) %>%
+  summarize(
+    count = n(),
+    mean_los = mean(los, na.rm = TRUE),
+    median_los = median(los, na.rm = TRUE),
+    IQR_los = IQR(los, na.rm = TRUE),
+    sd_los = sd(los, na.rm = TRUE),
+    .groups = "drop"
+  )
+los_marital_status_summary
+
+ggplot(mimic_icu_cohort, aes(x = marital_status, y = los, 
+                             fill = marital_status)) +
+  geom_boxplot() +
+  labs(
+    title = "ICU Length of Stay by marital_status", 
+    x = "Marital Status", 
+    y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Length of ICU stay vs. gender
+los_gender_summary <- mimic_icu_cohort %>%
+  group_by(gender) %>%
+  summarize(
+    count = n(),
+    mean_los = mean(los, na.rm = TRUE),
+    median_los = median(los, na.rm = TRUE),
+    IQR_los = IQR(los, na.rm = TRUE),
+    sd_los = sd(los, na.rm = TRUE),
+    .groups = "drop"
+  )
+los_gender_summary
+
+# Boxplot for LOS by Gender
+ggplot(mimic_icu_cohort, aes(x = gender, y = los, fill = gender)) +
+  geom_boxplot() +
+  labs(title = "ICU Length of Stay by Gender", 
+       x = "Gender", y = "Length of Stay (days)") +
+  theme_minimal()
+
+# Length of ICU stay vs. age at intime
+ggplot(mimic_icu_cohort, aes(x = age_intime, y = los)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "ICU Length of Stay vs. Age", 
+       x = "Age at ICU Admission", y = "Length of Stay (days)") +
+  theme_minimal()
+```
+
+Length of ICU stay `los` vs the last available lab measurements before ICU stay
+```{r}
+mimic_icu_cohort_long <- mimic_icu_cohort %>%
+  pivot_longer(cols = c(bicarbonate, chloride, creatinine, glucose, 
+                        potassium, sodium, hematocrit, wbc),
+               names_to = "lab_name", values_to = "lab_value")
+
+ggplot(mimic_icu_cohort_long, aes(x = lab_value, y = los)) +
+  # Scatter plot with transparency to reduce overplotting
+  geom_point(alpha = 0.3) +  
+  geom_smooth(method = "lm", color = "blue", se = TRUE) + 
+  # Separate plots for each lab item
+  facet_wrap(~lab_name, scales = "free_x") +  
+  labs(title = "ICU Length of Stay vs. Last Available Lab Measurements",
+       x = "Lab Value",
+       y = "Length of Stay (days)") +
+  theme_minimal()
+```
+
+Length of ICU stay `los` vs the first vital measurements within the ICU stay
+```{r}
+mimic_icu_vitals_long <- mimic_icu_cohort %>%
+  pivot_longer(cols = c(heart_rate, non_invasive_blood_pressure_systolic, 
+                        non_invasive_blood_pressure_diastolic, 
+                        respiratory_rate, temperature_fahrenheit),
+               names_to = "vital_sign", values_to = "value")
+
+ggplot(mimic_icu_vitals_long, aes(x = value, y = los)) +
+  geom_point(alpha = 0.3) +  # Scatter points with transparency
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +  
+  facet_wrap(~vital_sign, scales = "free_x") +  
+  labs(title = "ICU Length of Stay vs. Vital measurement",
+       x = "Vital Sign Value",
+       y = "Length of Stay (days)") +
+  theme_minimal()  # Clean theme
+```
+
+Length of ICU stay los vs first ICU unit
+```{r, fig.width=15, dpi=250}
+ggplot(mimic_icu_cohort, 
+       aes(x = first_careunit,  y = los, fill = first_careunit)) +
+  geom_boxplot() + 
+  labs(title = "ICU Length of Stay (LOS) by First ICU Unit",
+       x = "First ICU Unit",
+       y = "Length of Stay (days)") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1),
+    legend.position = "bottom") +
+  coord_flip()
+```
+
