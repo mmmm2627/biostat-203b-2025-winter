@@ -1,7 +1,7 @@
 ---
 title: "Biostat 203B Homework 4"
 subtitle: "Due Mar 9 @ 11:59PM"
-author: "Your Name and UID"
+author: "Sophia Luo, 106409469"
 format:
   html:
     theme: cosmo
@@ -224,6 +224,53 @@ Perform the following preprocessing steps. (i) Lump infrequent levels into "Othe
 Hint: Below is a numerical summary of my tibble after preprocessing:
 
 <iframe width=95% height="500" src="./mimic_icu_cohort_gtsummary.html"></iframe>
+
+```{r}
+mimic_icu_cohort <- mimic_icu_cohort |>
+  # lump infrequent levels into "Other"
+  mutate(first_careunit = fct_lump_n(first_careunit, n = 4),
+         last_careunit = fct_lump_n(last_careunit, n = 4),
+         admission_type = fct_lump_n(admission_type, n = 4),
+         admission_location = fct_lump_n(admission_location, n = 3),
+         discharge_location = fct_lump_n(discharge_location, n = 4)) |>
+  # collapse levels of `race`
+  mutate(
+    race = fct_collapse(
+      race,
+      ASIAN = c("ASIAN", "ASIAN - SOUTH EAST ASIAN", "ASIAN - CHINESE", 
+              "ASIAN - KOREAN", "ASIAN - ASIAN INDIAN"),
+      BLACK = c("BLACK/AFRICAN AMERICAN", "BLACK/AFRICAN", 
+                "BLACK/CAPE VERDEAN", "BLACK/CARIBBEAN ISLAND"),
+      HISPANIC = c("HISPANIC OR LATINO", "HISPANIC/LATINO - SALVADORAN", 
+                   "HISPANIC/LATINO - PUERTO RICAN", 
+                   "HISPANIC/LATINO - GUATEMALAN", 
+                   "HISPANIC/LATINO - CUBAN", "HISPANIC/LATINO - DOMINICAN", 
+                   "HISPANIC/LATINO - CENTRAL AMERICAN", 
+                   "HISPANIC/LATINO - HONDURAN", 
+                   "HISPANIC/LATINO - COLUMBIAN", "HISPANIC/LATINO - MEXICAN"),
+      WHITE = c("WHITE", "WHITE - RUSSIAN", "WHITE - OTHER EUROPEAN", 
+                "WHITE - BRAZILIAN", "WHITE - EASTERN EUROPEAN"),
+      Other = c("OTHER", "UNKNOWN", "UNABLE TO OBTAIN", 
+                "PATIENT DECLINED TO ANSWER", "AMERICAN INDIAN/ALASKA NATIVE", 
+                "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER", 
+                "MULTIPLE RACE/ETHNICITY", "PORTUGUESE", "SOUTH AMERICAN")
+      ),
+    race = factor(race, levels = c("ASIAN", "BLACK", "HISPANIC",
+                                   "WHITE", "Other"))) |>
+  # create `los_long` that is `TRUE` when `los` >= 2
+  mutate(los_long = los >= 2,
+         los_long = factor(los_long, levels = c(TRUE, FALSE)))
+
+  
+# summarize data, stratified by `los_long`
+mimic_icu_cohort |>
+  tbl_summary(
+    by = los_long,
+    include = c(-subject_id, -hadm_id, -stay_id, -intime, -outtime, 
+                -admittime, -dischtime, -deathtime, -admit_provider_id, 
+                -edregtime, -edouttime, -anchor_age, -anchor_year,
+                -anchor_year_group))
+```
 
 ### Q1.9 Save the final tibble
 
