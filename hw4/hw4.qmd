@@ -76,24 +76,70 @@ icustays_tble <- tbl(con_bq, "icustays") |>
 
 Connect to the `admissions` table.
 ```{r}
-# # TODO
-# admissions_tble <- 
+admissions_tble <- tbl(con_bq, "admissions") |>
+  arrange(subject_id, hadm_id) |>
+  print(width = Inf)
 ```
 
 ### Q1.4 `patients` data
 
 Connect to the `patients` table.
 ```{r}
-# # TODO
-# patients_tble <-
+patients_tble <- tbl(con_bq, "patients") |>
+  arrange(subject_id) |>
+  print(width = Inf)
 ```
 
 ### Q1.5 `labevents` data
 
 Connect to the `labevents` table and retrieve a subset that only contain subjects who appear in `icustays_tble` and the lab items listed in HW3. Only keep the last lab measurements (by `storetime`) before the ICU stay and pivot lab items to become variables/columns. Write all steps in _one_ chain of pipes.
+
 ```{r}
-# # TODO
-# labevents_tble <- 
+itemids <- c(50912, 50971, 50983, 50902, 50882, 51221, 51301, 50931)
+
+dlabitems_tble <- tbl(con_bq, "d_labitems") |>
+  filter(itemid %in% itemids) |>
+  select(itemid, label) |>
+  print(width = Inf)
+```
+
+```{r}
+labevents_tble <- tbl(con_bq, "labevents") |>
+  # only keep information needed from labevents
+  select(subject_id, itemid, storetime, valuenum) |>
+  # filter subjects who appear in `icustays_tble`
+  semi_join(icustays_tble, by = "subject_id") |>
+  # filter specific lab items
+  filter(itemid %in% itemids) |>
+  # merge with icustays to get stay info
+  left_join(
+    select(icustays_tble, subject_id, stay_id, intime),
+    by = c("subject_id"),
+    copy = TRUE
+  ) |>
+  # keep labevents before icustay
+  filter(storetime < intime) |>
+  # for each patient, icu stay, itemid combination
+  group_by(subject_id, stay_id, itemid) |>
+  # only keep the most recent labevent
+  slice_max(storetime, n = 1) |>
+  # discard storetime and intime
+  select(-storetime, -intime) |>
+  ungroup() |>
+  # pivot lab items to become columns
+  pivot_wider(names_from = itemid, values_from = valuenum) |>
+  # change itemid to label
+  rename_at(
+    vars(as.character(pull(dlabitems_tble, itemid))),
+    ~str_to_lower(pull(dlabitems_tble, label))
+  ) |>
+  rename(wbc = `white blood cells`) |>
+  # sort table and reorder columns
+  arrange(subject_id, stay_id) |>
+  relocate(
+    subject_id, stay_id, all_of(sort(
+      setdiff(colnames(labevents_tble), c("subject_id", "stay_id"))))) |>
+  print(width = Inf)
 ```
 
 ### Q1.6 `chartevents` data

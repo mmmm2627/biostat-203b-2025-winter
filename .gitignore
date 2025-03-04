@@ -12,6 +12,9 @@ test*
 *_pq
 *_files
 
+# HW4 files
+hw4/*.json
+
 # History files
 .Rhistory
 .Rapp.history
