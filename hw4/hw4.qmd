@@ -133,21 +133,65 @@ labevents_tble <- tbl(con_bq, "labevents") |>
     vars(as.character(pull(dlabitems_tble, itemid))),
     ~str_to_lower(pull(dlabitems_tble, label))
   ) |>
+  # reorder columns
+  select(
+    subject_id, stay_id, str_to_lower(sort(pull(dlabitems_tble, label)))) |>
   rename(wbc = `white blood cells`) |>
-  # sort table and reorder columns
+  # sort table by `subject_id` and `stay_id`
   arrange(subject_id, stay_id) |>
-  relocate(
-    subject_id, stay_id, all_of(sort(
-      setdiff(colnames(labevents_tble), c("subject_id", "stay_id"))))) |>
   print(width = Inf)
 ```
 
 ### Q1.6 `chartevents` data
 
 Connect to `chartevents` table and retrieve a subset that only contain subjects who appear in `icustays_tble` and the chart events listed in HW3. Only keep the first chart events (by `storetime`) during ICU stay and pivot chart events to become variables/columns. Write all steps in _one_ chain of pipes. Similary to HW3, if a vital has multiple measurements at the first `storetime`, average them.
+
 ```{r}
-# # TODO
-# chartevents_tble <- 
+itemids <- c(220045, 220179, 220180, 223761, 220210)
+
+ditems_tbl <- tbl(con_bq, "d_items") |>
+  filter(itemid %in% itemids) |>
+  select(itemid, label) |>
+  mutate(label = tolower(gsub(" ", "_", label))) |>
+  print(width = Inf)
+```
+
+```{r}
+chartevents_tble <- tbl(con_bq, "chartevents") |>
+  # only keep information needed for chartevents
+  select(subject_id, itemid, storetime, valuenum) |>
+  # filter itemid
+  filter(itemid %in% itemids) |>
+  # merge with icustays to get stay information
+  left_join(
+    select(icustays_tble, subject_id, stay_id, intime, outtime),
+    by = c("subject_id"),
+    copy = TRUE
+  ) |>
+  # only keep chartevents within the ICU stay
+  filter(storetime >= intime & storetime <= outtime) |>
+  # group by each patient, icu stay, itemid combination
+  group_by(subject_id, stay_id, itemid, storetime) |>
+  # get the average for measurement with same storetime
+  mutate(valuenum = mean(valuenum, na.rm = TRUE)) |>
+  ungroup() |>
+  group_by(subject_id, stay_id, itemid) |>
+  # only keep the first vital measurement
+  slice_min(storetime, n = 1) |>
+  # discard storetime, intime, and outtime
+  select(-storetime, -intime, -outtime) |>
+  ungroup() |>
+  # pivot chart events to columns
+  pivot_wider(names_from = itemid, values_from = valuenum) |>
+  # rename columns name
+  rename_at(
+    vars(as.character(pull(ditems_tbl, itemid))),
+    ~str_to_lower(pull(ditems_tbl, label))
+  ) |>
+  arrange(subject_id, stay_id) |>
+  select(subject_id, stay_id, 
+         str_to_lower(sort(pull(ditems_tbl, label)))) |>
+  print(width = Inf)
 ```
 
 ### Q1.7 Put things together
