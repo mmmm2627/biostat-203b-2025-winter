@@ -29,8 +29,14 @@ user_friendly_labels <- c(
   "Potassium" = "potassium", 
   "Sodium" = "sodium", 
   "Hematocrit" = "hematocrit", 
-  "White Blood Cells" = "wbc"
+  "White Blood Cells" = "wbc",
+  "Respiratory Rate" = "respiratory_rate", 
+  "Heart Rate" = "heart_rate", 
+  "Non Invasive Blood Pressure Systolic" = "non_invasive_blood_pressure_systolic",
+  "Non Invasive Blood Pressure Diastolic" = "non_invasive_blood_pressure_diastolic", 
+  "Temperature Fahrenheit" = "temperature_fahrenheit"
 )
+
 
 
 # Define UI
@@ -73,7 +79,7 @@ ui <- fluidPage(
             ),
             
             conditionalPanel(
-              condition = "input.variable_group == 'Lab Measurements'",
+              condition = "input.variable_group == 'Lab Measurements' || input.variable_group == 'Vitals'",
               uiOutput("dynamic_lab_slider")
             )
           ),
@@ -149,25 +155,38 @@ server <- function(input, output, session) {
       selectInput(
         "vitals_variable",
         "Select Vitals Variable:",
-        choices = c("Respiratory Rate", "Heart Rate", 
-                    "Non Invasive Blood Pressure Systolic",
-                    "Non Invasive Blood Pressure Diastolic", 
-                    "Temperature Fahrenheit")
+        choices <- c(
+          "Respiratory Rate" = "respiratory_rate", 
+          "Heart Rate" = "heart_rate", 
+          "Non Invasive Blood Pressure Systolic" = 
+            "non_invasive_blood_pressure_systolic",
+          "Non Invasive Blood Pressure Diastolic" = 
+            "non_invasive_blood_pressure_diastolic", 
+          "Temperature Fahrenheit" = "temperature_fahrenheit"
+        )
+        
       )
     }
   })
   
-  # Dynamically render the conditional sliderInput based on lab variable
+  # Dynamically render the conditional sliderInput based on variable
   output$dynamic_lab_slider <- renderUI({
-    if(input$variable_group == "Lab Measurements") {
-      selected_lab_var <- input$lab_variable
+    if(input$variable_group %in% c("Lab Measurements", "Vitals")) {
+      if (input$variable_group == "Lab Measurements") {
+        selected_lab_var <- input$lab_variable
+      } else {selected_lab_var <- input$vitals_variable}
       
-      min_val <- min(cohort_data[[selected_lab_var]], na.rm = TRUE)
-      max_val <- max(cohort_data[[selected_lab_var]], na.rm = TRUE)
+      data <- cohort_data[[selected_lab_var]]
+      
+      q1 <- quantile(data, 0.01, na.rm = TRUE)
+      q99 <- quantile(data, 0.99, na.rm = TRUE)
+      
+      min_val <- min(data, na.rm = TRUE)
+      max_val <- max(data, na.rm = TRUE)
       
       sliderInput(
         "xlim_lab", "X-axis Limits:", min = min_val, max = max_val,
-        value = c(min_val, max_val)
+        value = c(q1, q99) # default view excludes extreme outliers
       )
     }
   })
@@ -227,9 +246,12 @@ server <- function(input, output, session) {
       }
     } 
     
-    # Generate histogram and summary for `Lab Measurements`
-    else if (input$variable_group == "Lab Measurements") {
-      selected_var <- input$lab_variable
+    # Generate histogram and summary for lab and vitals
+    else if (input$variable_group %in% c("Lab Measurements", "Vitals")) {
+      if (input$variable_group == "Lab Measurements") {
+        selected_var <- input$lab_variable
+      } else {selected_var <- input$vitals_variable}
+      
       variable_label <- names(
         user_friendly_labels[user_friendly_labels == selected_var])
       
@@ -245,12 +267,6 @@ server <- function(input, output, session) {
           axis.title = element_text(size = 16),
           axis.text = element_text(size = 14)
         )
-      
-    } else if (input$variable_group == "Vitals") {
-      paste("Selected variable group:", input$variable_group,
-            "| Selected variable:", input$vitals_variable)
-    } else {
-      paste("Selected variable group:", input$variable_group)
     }
   })
   
@@ -259,8 +275,10 @@ server <- function(input, output, session) {
       selected_var <- input$demo_variable
       summary(cohort_data[[selected_var]])
     }
-    else if (input$variable_group == "Lab Measurements") {
-      selected_var <- input$lab_variable
+    else if (input$variable_group  %in% c("Lab Measurements", "Vitals")) {
+      if (input$variable_group == "Lab Measurements") {
+        selected_var <- input$lab_variable
+      } else {selected_var <- input$vitals_variable}
       summary(cohort_data[[selected_var]])
     }
   })
