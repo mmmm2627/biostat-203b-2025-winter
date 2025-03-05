@@ -37,6 +37,17 @@ user_friendly_labels <- c(
   "Temperature Fahrenheit" = "temperature_fahrenheit"
 )
 
+# Authenticate with BigQuery
+satoken <- "./../biostat-203b-2025-winter-4e58ec6e5579.json"
+bq_auth(path = satoken)
+# Connect to the BigQuery database `biostat-203b-2025-mimiciv_3_1`
+con_bq <- dbConnect(
+  bigrquery::bigquery(),
+  project = "biostat-203b-2025-winter",
+  dataset = "mimiciv_3_1",
+  billing = "biostat-203b-2025-winter"
+)
+
 
 
 # Define UI
@@ -289,8 +300,9 @@ server <- function(input, output, session) {
   # Handle patient lookup when Submit button is clicked
   observeEvent(input$submit_id, {
     subject_id <- input$subject_id
-    if (is.null(subject_id) || subject_id == "") {
-      output$patient_info_output <- renderText("Please enter a valid Patient ID.")
+    if (is.null(subject_id) || !(subject_id %in% cohort_data$subject_id)) {
+      output$patient_info_output <- renderText(
+        "Please enter a valid Patient ID.")
       return()
     }
     
@@ -303,7 +315,8 @@ server <- function(input, output, session) {
     
     patient_data(fetched_data)
     
-    output$patient_info_output <- renderText(paste("Patient ID:", subject_id, "data retrieved."))
+    output$patient_info_output <- renderText(
+      paste("Patient ID:", subject_id, "data retrieved."))
   })
   
   # Generate plot based on selected patient_info_type
