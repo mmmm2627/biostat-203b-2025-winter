@@ -21,8 +21,17 @@ user_friendly_labels <- c(
   "Race" = "race", 
   "Gender" = "gender", 
   "Language" = "language", 
-  "Age Intime" = "age_intime"
+  "Age Intime" = "age_intime",
+  "Bicarbonate" = "bicarbonate", 
+  "Chloride" = "chloride", 
+  "Creatinine" = "creatinine", 
+  "Glucose" = "glucose", 
+  "Potassium" = "potassium", 
+  "Sodium" = "sodium", 
+  "Hematocrit" = "hematocrit", 
+  "White Blood Cells" = "wbc"
 )
+
 
 # Define UI
 ui <- fluidPage(
@@ -61,6 +70,11 @@ ui <- fluidPage(
                 "input.variable_group == 'Demographics' && input.demo_variable == 'age_intime'",
               sliderInput("xlim_age_intime", "X-axis Limits:",
                           min = 18, max = 103, value = c(18, 103))
+            ),
+            
+            conditionalPanel(
+              condition = "input.variable_group == 'Lab Measurements'",
+              uiOutput("dynamic_lab_slider")
             )
           ),
           
@@ -122,8 +136,14 @@ server <- function(input, output, session) {
       selectInput(
         "lab_variable",
         "Select Lab Measurement Variable:",
-        choices = c("Bicarbonate", "Chloride", "Creatinine", "Glucose", 
-                    "Potassium", "Sodium", "Hematocrit", "White Blood Cells")
+        choices = c("Bicarbonate" = "bicarbonate", 
+                    "Chloride" = "chloride", 
+                    "Creatinine" = "creatinine", 
+                    "Glucose" = "glucose", 
+                    "Potassium" = "potassium", 
+                    "Sodium" = "sodium", 
+                    "Hematocrit" = "hematocrit", 
+                    "White Blood Cells" = "wbc")
       )
     } else if (input$variable_group == "Vitals") {
       selectInput(
@@ -133,6 +153,21 @@ server <- function(input, output, session) {
                     "Non Invasive Blood Pressure Systolic",
                     "Non Invasive Blood Pressure Diastolic", 
                     "Temperature Fahrenheit")
+      )
+    }
+  })
+  
+  # Dynamically render the conditional sliderInput based on lab variable
+  output$dynamic_lab_slider <- renderUI({
+    if(input$variable_group == "Lab Measurements") {
+      selected_lab_var <- input$lab_variable
+      
+      min_val <- min(cohort_data[[selected_lab_var]], na.rm = TRUE)
+      max_val <- max(cohort_data[[selected_lab_var]], na.rm = TRUE)
+      
+      sliderInput(
+        "xlim_lab", "X-axis Limits:", min = min_val, max = max_val,
+        value = c(min_val, max_val)
       )
     }
   })
@@ -190,9 +225,27 @@ server <- function(input, output, session) {
             legend.text = element_text(size = 16)
           )
       }
-    } else if (input$variable_group == "Lab Measurements") {
-      paste("Selected variable group:", input$variable_group,
-            "| Selected variable:", input$lab_variable)
+    } 
+    
+    # Generate histogram and summary for `Lab Measurements`
+    else if (input$variable_group == "Lab Measurements") {
+      selected_var <- input$lab_variable
+      variable_label <- names(
+        user_friendly_labels[user_friendly_labels == selected_var])
+      
+      ggplot(cohort_data, aes_string(x = selected_var)) +
+        geom_histogram() +
+        labs(title = paste("Distribution of", variable_label),
+             x = variable_label,
+             y = "Count") +
+        theme_minimal() +
+        xlim(input$xlim_lab[1], input$xlim_lab[2]) +
+        theme(
+          plot.title = element_text(size = 20, face = "bold"),
+          axis.title = element_text(size = 16),
+          axis.text = element_text(size = 14)
+        )
+      
     } else if (input$variable_group == "Vitals") {
       paste("Selected variable group:", input$variable_group,
             "| Selected variable:", input$vitals_variable)
@@ -204,6 +257,10 @@ server <- function(input, output, session) {
   output$summary_stats <- renderPrint({
     if (input$variable_group == "Demographics") {
       selected_var <- input$demo_variable
+      summary(cohort_data[[selected_var]])
+    }
+    else if (input$variable_group == "Lab Measurements") {
+      selected_var <- input$lab_variable
       summary(cohort_data[[selected_var]])
     }
   })
