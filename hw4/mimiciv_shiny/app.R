@@ -8,10 +8,33 @@ library(readr)  # For loading RDS file
 
 # Load ICU cohort data
 cohort_data <- readRDS("mimic_icu_cohort.rds")
+cohort_data <- cohort_data |>
+  mutate(insurance = as.factor(insurance),
+         marital_status = as.factor(marital_status),
+         gender = as.factor(gender),
+         language = as.factor(language))
+
+# Mapping for user-friendly labels in plots
+user_friendly_labels <- c(
+  "Insurance" = "insurance", 
+  "Marital Status" = "marital_status", 
+  "Race" = "race", 
+  "Gender" = "gender", 
+  "Language" = "language", 
+  "Age Intime" = "age_intime"
+)
 
 # Define UI
 ui <- fluidPage(
-
+    tags$style(HTML("
+      .shiny-text-output {
+        font-size: 16px;
+      }
+      .shiny-plot-output {
+        font-size: 18px;
+      }
+    ")),
+  
     # Application title
     titlePanel("ICU Cohort Data"),
 
@@ -25,18 +48,26 @@ ui <- fluidPage(
           sidebarPanel(
             # Drop down menu for selecting variable group
             selectInput(
-              "variable_group",
-              "Select Variable Group:",
+              "variable_group", "Select Variable Group:",
               choices = c("Demographics", "Lab Measurements", "Vitals")
             ),
             
             # Conditional drop down menu for specific variables
-            uiOutput("dynamic_input")
+            uiOutput("dynamic_input"),
+            
+            # Numeric inputs for x-axis limits (shown only for age_intime)
+            conditionalPanel(
+              condition = 
+                "input.variable_group == 'Demographics' && input.demo_variable == 'age_intime'",
+              sliderInput("xlim_age_intime", "X-axis Limits:",
+                          min = 18, max = 103, value = c(18, 103))
+            )
           ),
           
           mainPanel(
-            # Placeholder for displaying summary output
-            textOutput("summary_output")
+            # Display summary bar plot
+            plotOutput("summary_plot"),
+            verbatimTextOutput("summary_stats")
           )
         )
       ),
@@ -81,8 +112,11 @@ server <- function(input, output, session) {
       selectInput(
         "demo_variable",
         "Select Demographic Variable:",
-        choices = c("Insurance", "Marital Status", "Race", "Gender", 
-                    "Language", "Age Intime")
+        choices = c("Insurance" = "insurance", 
+                    "Marital Status" = "marital_status", 
+                    "Race" = "race", "Gender" = "gender", 
+                    "Language" = "language", 
+                    "Age Intime" = "age_intime")
       )
     } else if (input$variable_group == "Lab Measurements") {
       selectInput(
@@ -103,19 +137,74 @@ server <- function(input, output, session) {
     }
   })
 
-  # Placeholder for summary functionality
-  output$summary_output <- renderText({
+  # Summary functionality
+  output$summary_plot <- renderPlot({
+    # Generate bar plot and summary for `Demographics`
     if (input$variable_group == "Demographics") {
-      paste("Selected variable group:", input$variable_group, 
-            "| Selected variable:", input$demo_variable)
+      selected_var <- input$demo_variable
+      variable_label <- names(
+        user_friendly_labels[user_friendly_labels == selected_var])
+      
+      if (selected_var == "language") {
+        ggplot(cohort_data, aes_string(x = selected_var, fill = selected_var)) +
+          geom_bar() +
+          labs(title = paste("Distribution of", variable_label),
+               x = selected_var,
+               y = "Count",
+               fill = variable_label) +
+          theme_minimal() +
+          coord_flip() +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            axis.title = element_text(size = 16), 
+            axis.text = element_text(size = 14),
+            legend.title = element_text(size = 16, face = "bold"),
+            legend.text = element_text(size = 14)
+          )
+      } else if (selected_var == "age_intime") {
+        ggplot(cohort_data, aes_string(x = selected_var)) +
+          geom_histogram() +
+          labs(title = paste("Distribution of", variable_label),
+               x = "Age Intime",
+               y = "Count") +
+          theme_minimal() +
+          xlim(input$xlim_age_intime[1], input$xlim_age_intime[2]) +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            axis.title = element_text(size = 16),
+            axis.text = element_text(size = 14)
+          )
+      } else {
+        ggplot(cohort_data, aes_string(x = selected_var, fill = selected_var)) +
+          geom_bar() +
+          labs(title = paste("Distribution of", variable_label),
+               x = selected_var,
+               y = "Count",
+               fill = variable_label) +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),  
+            axis.title = element_text(size = 16), 
+            axis.text = element_text(size = 14),  
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 16)
+          )
+      }
     } else if (input$variable_group == "Lab Measurements") {
-      paste("Selected variable group:", input$variable_group, 
+      paste("Selected variable group:", input$variable_group,
             "| Selected variable:", input$lab_variable)
     } else if (input$variable_group == "Vitals") {
-      paste("Selected variable group:", input$variable_group, 
+      paste("Selected variable group:", input$variable_group,
             "| Selected variable:", input$vitals_variable)
     } else {
       paste("Selected variable group:", input$variable_group)
+    }
+  })
+  
+  output$summary_stats <- renderPrint({
+    if (input$variable_group == "Demographics") {
+      selected_var <- input$demo_variable
+      summary(cohort_data[[selected_var]])
     }
   })
   
@@ -124,10 +213,9 @@ server <- function(input, output, session) {
   
   # Handle patient lookup when Submit button is clicked
   observeEvent(input$submit_id, {
-    patient_id <- input$patient_id
-    if (patient_id == "") {
-      output$patient_info_output <- renderText(
-        "Please enter a valid Patient ID.")
+    subject_id <- input$subject_id
+    if (is.null(subject_id) || subject_id == "") {
+      output$patient_info_output <- renderText("Please enter a valid Patient ID.")
       return()
     }
     
@@ -140,7 +228,7 @@ server <- function(input, output, session) {
     
     patient_data(fetched_data)
     
-    output$patient_info_output <- renderText(paste("Patient ID:", patient_id, "data retrieved."))
+    output$patient_info_output <- renderText(paste("Patient ID:", subject_id, "data retrieved."))
   })
   
   # Generate plot based on selected patient_info_type
@@ -148,7 +236,7 @@ server <- function(input, output, session) {
     data <- patient_data()
     if (is.null(data)) return(NULL)  # If no data, return NULL
     
-    if (input$patient_info_type == "ADT") {
+    if (input$patient_plot_type == "ADT") {
       ggplot(data, aes(x = time, y = ADT_value)) +
         geom_line(color = "blue") +
         geom_point(color = "blue") +
