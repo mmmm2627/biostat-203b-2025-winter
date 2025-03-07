@@ -157,8 +157,7 @@ events <- bind_rows(
   ADT |> select(subject_id, event_time = intime, event_type, careunit, is_icu),
   ADT |> select(subject_id, event_time = outtime, event_type, careunit, is_icu),
   Lab |> select(subject_id, event_time, event_type),
-  proc |> select(subject_id, event_time, event_type, procedure_type)
-) |>
+  proc |> select(subject_id, event_time, event_type, procedure_type)) |>
   mutate (event_type = factor(
     event_type, levels = c("ADT", "Lab", "Procedure")
   ))
