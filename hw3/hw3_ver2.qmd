@@ -61,46 +61,9 @@ Hint: We need to pull information from data files `patients.csv.gz`, `admissions
 Read info with `subject_id = 10063848`:
 ```{r}
 id <- 10063848
-
-# Read info from patients.csv.gz
-file_path <- '~/mimic/hosp/patients.csv.gz'
-patient <- fread(file_path)
-patient <- patient[subject_id == id]
-
-# Read info from admissions.csv.gz
-file_path <- '~/mimic/hosp/admissions.csv.gz'
-admissions <- fread(file_path)
-admissions <- admissions[subject_id == id]
-
-# Read info from transfers.csv.gz
-file_path <- '~/mimic/hosp/transfers.csv.gz'
-transfers <- fread(file_path)
-transfers <- transfers[subject_id == id]
-
-# Read info from labevents.csv.gz
-labevents <- open_dataset("labevents_pq", format = "parquet")
-labevents <- labevents %>%
-  filter(subject_id == id) %>%
-  collect()
-
-# Read info from procedures_icd.csv.gz
-file_path <- '~/mimic/hosp/procedures_icd.csv.gz'
-procedures <- fread(file_path)
-procedures <- procedures[subject_id == id]
-
-# Read info from diagnoses_icd.csv.gz, d_icd_procedures.csv.gz, 
-# d_icd_diagnoses.csv.gz
-file_paths <- c('~/mimic/hosp/diagnoses_icd.csv.gz',
-                '~/mimic/hosp/d_icd_procedures.csv.gz',
-                '~/mimic/hosp/d_icd_diagnoses.csv.gz')
-diagnoses <- fread(file_paths[1]) %>%
-  filter(subject_id == id)
-
-d_icd_procedures <- fread(file_paths[2])
-d_icd_diagnoses <- fread(file_paths[3])
 ```
 
-Merge information needed for the plot:
+Information needed for the plot:
 ```{r}
 # X-axis: Calender time
 # Y-axis: type of event (ADT, lab, procedure)
@@ -111,56 +74,46 @@ Merge information needed for the plot:
 # Subtitle: top 3 diagnoses
 
 # Patient information
-patient_info <- patient |> 
-  left_join(admissions, by = "subject_id") |> # get race from admissions
+patient_info <- fread('~/mimic/hosp/patients.csv.gz') |> 
+  filter(subject_id == id) |>
+  left_join(
+    fread('~/mimic/hosp/admissions.csv.gz'), by = "subject_id") |> # get race from admissions
   select(subject_id, gender, anchor_age, race) |>
   distinct()
 
 # Get top 3 diagnoses
-top_3_diagnoses <- diagnoses |>
+top_3_diagnoses <- fread('~/mimic/hosp/diagnoses_icd.csv.gz') |>
+  filter(subject_id == id) |>
   count(icd_code, sort = TRUE) |>
   arrange(desc(n)) |>
   head(3) |>
   left_join(d_icd_diagnoses, by = "icd_code") |>
   select(long_title)
-# top_3_diagnoses_str <- paste(top_3_diagnoses$long_title, collapse = ', ')
 
-# Prepare Lab Events
-Lab <- labevents |> 
+# Labevents
+Lab <- open_dataset("labevents_pq", format = "parquet") |>
   select(subject_id, charttime) |>
-  rename(event_time = charttime) |>
-  mutate(event_type = "Lab",
-         event_time = as_date(event_time))
+  filter(subject_id == id) |>
+  distinct() |>
+  collect()
 
-# Prepare ADT
-ADT <- transfers |>
-  select(subject_id, careunit, intime, outtime) |>
-  mutate(
-    intime = as_date(ymd_hms(intime)),  # Convert to date
-    outtime = as_date(ymd_hms(outtime)),  # Convert to date
-    event_type = "ADT",
-    is_icu = ifelse(careunit == "Surgical Intensive Care Unit (SICU)", 
-                    TRUE, FALSE)
-  )
-
-# Prepare Procedures
-proc <- procedures |>
-  select(subject_id, chartdate, icd_code) |>
-  left_join(d_icd_procedures, by = 'icd_code') |>
-  rename(event_time = chartdate,
-         procedure_type = long_title) |>
-  mutate(event_type = "Procedure",
-         event_time = as_date(event_time))
-
-# Combine all events into single dataset
-events <- bind_rows(
-  ADT |> select(subject_id, event_time = intime, event_type, careunit, is_icu),
-  ADT |> select(subject_id, event_time = outtime, event_type, careunit, is_icu),
-  Lab |> select(subject_id, event_time, event_type),
-  proc |> select(subject_id, event_time, event_type, procedure_type)) |>
-  mutate (event_type = factor(
-    event_type, levels = c("ADT", "Lab", "Procedure")
-  ))
+# ADT
+ADT <- fread('~/mimic/hosp/transfers.csv.gz') |>
+  filter(subject_id == id,
+         !is.na(careunit), careunit != "UNKNOWN",
+         !is.na(intime),
+         !is.na(outtime)) |>
+  mutate(is_icu = str_detect(careunit, 'CU')) |>
+  select(subject_id, careunit, intime, outtime, is_icu)
+  
+# Procedures
+Procedure <- fread('~/mimic/hosp/procedures_icd.csv.gz') |>
+  filter(subject_id == id) |>
+  left_join(
+    fread('~/mimic/hosp/d_icd_procedures.csv.gz'), 
+    by = c('icd_code', 'icd_version')
+  ) |>
+  select(subject_id, chartdate, long_title)
 ```
 
 Plot the figure:
@@ -180,35 +133,41 @@ plot_subtitle <- paste(
 ```
 
 ```{r plot ADT, fig.align="center", fig.width = 8, dpi=250, warning=FALSE}
-ggplot(events, 
-       aes(x = event_time, y = event_type)) +
+ggplot() +
   
-  scale_y_discrete(limits = c("Procedure", "Lab", "ADT")) +
+  scale_x_datetime(name = "Calender Time",
+                   limits = c(min(ADT$intime) - day(1), max(ADT$outtime))) +
+  scale_y_discrete(name = NULL,
+                   limits = c("Procedure", "Lab", "ADT")) +
   
   # Procedure Events as different shapes
   geom_point(
-    data = proc,
-    aes(x = event_time, y = event_type, shape = procedure_type),
-    size = 3) +
+    data = Procedure,
+    aes(x = as.POSIXct(chartdate), y = "Procedure", 
+        shape = sub(",.*", "", long_title)),
+    size = 3
+  ) +
   
-  # ADT as line segment
-  geom_segment(
-    data = ADT,
-    aes(x = intime, xend = outtime, y = event_type, yend = event_type, 
-        color = careunit, linewidth = as.factor(is_icu))) +
+  # scale_shape_manual(values = c(1:n_distinct(Procedure$long_title))) +
   
   # Lab Events as Crosses
   geom_point(
     data = Lab,
-    aes(x = event_time, y = event_type),
-    shape = 3, size = 2) +
+    aes(x = charttime, y = "Lab"),
+    shape = 3, size = 2
+  ) +
+  
+  # ADT as line segment
+  geom_segment(
+    data = ADT,
+    aes(x = intime, xend = outtime, y = "ADT", yend = "ADT",
+        color = careunit, linewidth = as.factor(is_icu))
+  ) +
   
   # Formatting
   labs(
     title = plot_title,
     subtitle = plot_subtitle,
-    x = "Calender Time",
-    y = NULL,
     color = "Care Unit",
     shape = "Procedure"
   ) +
@@ -217,10 +176,10 @@ ggplot(events,
   guides(
     # Removes the legend for the line thickness (linewidth)
     linewidth = "none", 
-    # Title for shape legend
-    shape = guide_legend(title = "Procedure", nrow = 3, order = 2),
     # Title for color legend
-    color = guide_legend(title = "Care Unit", nrow = 2, order = 1)
+    color = guide_legend(title = "Care Unit", ncol = 3),
+    # Title for shape legend
+    shape = guide_legend(title = "Procedure", ncol = 2)
   ) +
   
   theme_minimal() +
@@ -228,7 +187,6 @@ ggplot(events,
     legend.position = "bottom",
     legend.box = "vertical",  # Stack legends horizontally
     legend.text = element_text(size = 6),
-    # legend.spacing.y = unit(0.1, "cm"),
     axis.text.x = element_text(hjust = 1)
   )
 ```
@@ -248,60 +206,41 @@ Read info with `subject_id = 10063848`:
 id <- 10063848
 
 # Read info from d_items.csv.gz
-file_path <- "~/mimic/icu/d_items.csv.gz"
-d_items <- fread(file_path)
-```
-
-```{r, cache=TRUE}
-# Read info from chartevents.csv.gz
-con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
-
-chartevents <- dbGetQuery(con, "
-  SELECT subject_id, stay_id, charttime, itemid, value
-  FROM read_csv_auto('~/mimic/icu/chartevents.csv.gz')
-  WHERE subject_id = 10063848
-")
-
-dbDisconnect(con)
-```
-
-Merge information for plotting:
-```{r}
-# vitals information
-vitals <- chartevents |>
-  left_join(d_items, by = "itemid") |>
+d_items <- fread("~/mimic/icu/d_items.csv.gz") |>
+  select(itemid, label, abbreviation) |>
   filter(abbreviation %in% c("HR", "NBPd", "NBPs", "RR", "Temperature F")) |>
-  select(subject_id, stay_id, charttime, value, abbreviation) |>
-  mutate(charttime = as.POSIXct(charttime, format = "%Y-%m-%d %H:%M:%S"))
+  mutate(itemid = as.character(itemid))
 ```
 
-```{r plot ICU stays, fig.align="center", fig.width = 10, fig.height = 10, dpi=250, warning=FALSE}
-# x-axis: calender time
-# y-axis: value of vitals
-# color: type of vitals
-# facet grid: stay ID
+```{r}
+# Read info from chartevents.csv.gz
+ICU <- open_dataset("chartevents_pq", format = "parquet") |>
+  mutate(itemid = as.character(itemid)) |> # convert to character
+  filter(subject_id == id,
+         itemid %in% d_items$itemid) |>
+  select(subject_id, stay_id, charttime, itemid, valuenum) |>
+  left_join(d_items, by = "itemid") |>
+  collect()
+```
 
-ggplot(vitals, aes(x = charttime, y = value, group = abbreviation,
-                   color = abbreviation)) +
+```{r, fig.width=10, dpi=200}
+ggplot(ICU, aes(x = charttime, y = valuenum, color = abbreviation)) +
   geom_point() +
   geom_line() +
   facet_grid(abbreviation ~ stay_id, scales = "free") +
   
   labs(
-    title = paste("Patient", unique(vitals$subject_id), 
-                  "ICU stays - Vitals", sep = " ")
+    title = paste("Patient", ICU$subject_id[1], "ICU stays - Vitals"),
+    x = "",
+    y = ""
   ) +
   
   theme_light() +
   theme(
     legend.position = "none",
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1)
+    axis.text.x = element_text(angle = 35, hjust = 1)
   ) +
-  
-  scale_x_datetime(date_labels = "%b %d %H:%M") +
-  scale_y_discrete(breaks = function(x) x[seq(1, length(x), by = 5)])
+  scale_x_datetime(date_labels = "%b %d %H:%M")
 ```
 
 ## Q2. ICU stays
