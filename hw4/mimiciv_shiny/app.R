@@ -1,5 +1,8 @@
 
 library(shiny)
+library(shinydashboard)
+library(shinythemes)
+library(bslib)
 library(ggplot2)
 library(dplyr)
 library(lubridate)
@@ -33,8 +36,10 @@ user_friendly_labels <- c(
   "White Blood Cells" = "wbc",
   "Respiratory Rate" = "respiratory_rate", 
   "Heart Rate" = "heart_rate", 
-  "Non Invasive Blood Pressure Systolic" = "non_invasive_blood_pressure_systolic",
-  "Non Invasive Blood Pressure Diastolic" = "non_invasive_blood_pressure_diastolic", 
+  "Non Invasive Blood Pressure Systolic" = 
+    "non_invasive_blood_pressure_systolic",
+  "Non Invasive Blood Pressure Diastolic" = 
+    "non_invasive_blood_pressure_diastolic", 
   "Temperature Fahrenheit" = "temperature_fahrenheit"
 )
 
@@ -228,7 +233,8 @@ get_ICU_data <- function(connection, id) {
 draw_icu <- function(connection, id) {
   ICU <- get_ICU_data(connection, id)
   
-  icu_plot <- ggplot(ICU, aes(x = charttime, y = valuenum, color = abbreviation)) +
+  icu_plot <- ggplot(ICU, aes(x = charttime, y = valuenum, 
+                              color = abbreviation)) +
     geom_point() +
     geom_line() +
     facet_grid(abbreviation ~ stay_id, scales = "free") +
@@ -243,7 +249,7 @@ draw_icu <- function(connection, id) {
     theme(
       legend.position = "none",
       
-      plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+      plot.title = element_text(size = 24, face = "bold"),
       axis.title.x = element_text(size = 18, face = "bold"),
       axis.title.y = element_text(size = 18, face = "bold"), 
       axis.text.x = element_text(size = 14, angle = 35, hjust = 1),
@@ -257,87 +263,93 @@ draw_icu <- function(connection, id) {
 }
 
 # Define UI
-ui <- fluidPage(
-    tags$style(HTML("
-      .shiny-text-output {
-        font-size: 16px;
-      }
-      .shiny-plot-output {
-        font-size: 18px;
-      }
-    ")),
+ui <- dashboardPage(
+  # skin = "blue",  # Dashboard theme color
   
-    # Application title
-    titlePanel("ICU Cohort Data"),
-
-    tabsetPanel(
+  # Header with title
+  dashboardHeader(title = "ICU Cohort Dashboard", titleWidth = 230),
+  
+  # Sidebar Navigation
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Summary", tabName = "summary", icon = icon("chart-bar")),
+      menuItem("Patient Info", tabName = "patient_info", icon = icon("user-md"))
+    )
+  ),
+  
+  # Dashboard Body
+  dashboardBody(
+    
+    # Custom CSS for improved styling
+    tags$head(
+      tags$style(HTML("
+        .content-wrapper { background-color: #f4f6f9; }
+        .box { border-radius: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.1); }
+        .box-header { font-weight: bold; }
+        .sidebar { background-color: #222d32; }
+        .main-footer { text-align: center; font-weight: bold; }
+      "))
+    ),
+    
+    tabItems(
       
       # Summary Tab
-      tabPanel(
-        "Summary",
-        sidebarLayout(
+      tabItem(
+        tabName = "summary",
+        fluidRow(
+          box(title = "📈 Variable Selection", status = "primary", 
+              solidHeader = TRUE, width = 4,
+              
+              selectInput(
+                "variable_group", "🔍 Select Variable Group:",
+                choices = c("Demographics", "Lab Measurements", "Vitals")),
+              uiOutput("dynamic_input"),
+              
+              conditionalPanel(
+                condition = "input.variable_group == 'Demographics' 
+                && input.demo_variable == 'age_intime'",
+                sliderInput("xlim_age_intime", "X-axis Limits:",
+                            min = 18, max = 103, value = c(18, 103))
+                ),
+              
+              conditionalPanel(
+                condition = "input.variable_group == 'Lab Measurements' 
+                || input.variable_group == 'Vitals'",
+                uiOutput("dynamic_lab_slider")
+                )
+              ),
           
-          sidebarPanel(
-            # Drop down menu for selecting variable group
-            selectInput(
-              "variable_group", "Select Variable Group:",
-              choices = c("Demographics", "Lab Measurements", "Vitals")
-            ),
-            
-            # Conditional drop down menu for specific variables
-            uiOutput("dynamic_input"),
-            
-            # Numeric inputs for x-axis limits (shown only for age_intime)
-            conditionalPanel(
-              condition = 
-                "input.variable_group == 'Demographics' && input.demo_variable == 'age_intime'",
-              sliderInput("xlim_age_intime", "X-axis Limits:",
-                          min = 18, max = 103, value = c(18, 103))
-            ),
-            
-            conditionalPanel(
-              condition = "input.variable_group == 'Lab Measurements' || input.variable_group == 'Vitals'",
-              uiOutput("dynamic_lab_slider")
-            )
-          ),
-          
-          mainPanel(
-            # Display summary bar plot
-            plotOutput("summary_plot"),
-            verbatimTextOutput("summary_stats")
+          box(title = "📊 Summary Plot", status = "primary", 
+              solidHeader = TRUE, width = 8,
+              
+              plotOutput("summary_plot", height = "400px"),
+                    verbatimTextOutput("summary_stats"))
           )
-        )
-      ),
+        ),
       
       # Patient Info Tab
-      tabPanel(
-        "Patient Info",
-        sidebarLayout(
-          sidebarPanel(
-            # Input for Patient ID
-            textInput(
-              "subject_id",
-              "Enter Patient's ID:",
-              value = ""
-            ),
-            # Submit button
-            actionButton("submit_id", "Submit"),
-            # Select Input for ADT or ICU
-            selectInput(
-              "patient_plot_type",
-              "Select Plot Type:",
-              choices = c("ADT", "ICU stays")
-            )
-          ),
+      tabItem(
+        tabName = "patient_info",
+        fluidRow(
+          box(title = "🔍 Patient Selection", status = "info", 
+              solidHeader = TRUE, width = 4,
+              
+              textInput("subject_id", "🆔 Enter Patient's ID:", value = ""),
+              actionButton("submit_id", "🚀 Submit", class = "btn btn-primary"),
+              selectInput("patient_plot_type", "📊 Select Plot Type:",
+                                choices = c("ADT", "ICU stays"))
+              ),
           
-          mainPanel(
-            textOutput("patient_info_output"),
-            plotOutput("patient_plot")
+          box(title = "📈 Patient Data Visualization", status = "info", 
+              solidHeader = TRUE, width = 8,
+              
+              textOutput("patient_info_output"),
+              plotOutput("patient_plot", height = "500px"))
           )
-        )
       )
       
-    )
+      ) # tabItems end
+  ) # dashboardBody end
 )
 
 # Define server
@@ -531,7 +543,7 @@ server <- function(input, output, session) {
       
       draw_icu(con_bq, id)
     }
-  }, height = 600)
+  }, height = 500)
     
 }
 
