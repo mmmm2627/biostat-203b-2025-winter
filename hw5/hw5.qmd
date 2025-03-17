@@ -19,9 +19,11 @@ library(tidymodels)
 library(gtsummary)
 library(naniar)  # Visualize missing data
 library(ggplot2)
-library(recipes)
-library(glmnet)
-library(caret)
+library(recipes) # Data Preprocessing
+library(glmnet) # Logistic Regression
+library(caret) # Random Forest
+library(ranger) # Random Forest
+library(keras) # MLP
 ```
 
 ## Predicting ICU duration
@@ -256,6 +258,172 @@ logit_fit_final |>
 
 #### Random Forest
 
+```{r random forest preprocessing}
+rf_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
+  # Mean inputation for normal variables
+  step_impute_mean(bicarbonate, chloride, hematocrit, sodium, heart_rate) |>
+  
+  # Median imputation for skewed variables
+  step_impute_median(creatinine, glucose, potassium, wbc, 
+                     non_invasive_blood_pressure_diastolic, 
+                     non_invasive_blood_pressure_systolic, 
+                     respiratory_rate, temperature_fahrenheit) |>
+  
+  # KNN imputation for categorical variables
+  step_impute_knn(marital_status) |>
+  
+  # zero-variance filter
+  step_zv(all_nominal_predictors()) |>
+  print()
+```
+```{r random forest model}
+rf_mod <- rand_forest(
+  mode = "classification",
+  mtry = tune(), # number of predictors randomly sampled in each split
+  trees = tune() # number of trees in ensemble
+) |>
+  set_engine("ranger")
+rf_mod
+```
+```{r random forest workflow}
+rf_wf <- workflow() |>
+  add_recipe(rf_rec) |>
+  add_model(rf_mod)
+rf_wf
+```
+
+```{r random forest grid}
+rf_grid <- grid_regular(
+  trees(range = c(200L, 1000L)),
+  mtry(range = c(1L, 8L)),
+  levels = c(5, 5)
+  )
+rf_grid
+```
+
+```{r random forest fit}
+set.seed(203)
+
+folds <- vfold_cv(mimiciv_icu_cohort_train, v = 5, strata = los_long)
+folds
+
+rf_fit <- rf_wf |>
+  tune_grid(
+    resamples = folds,
+    grid = rf_grid,
+    metrics = metric_set(roc_auc, accuracy)
+  )
+rf_fit
+```
+
+```{r}
+rf_fit |>
+  collect_metrics() |>
+  print(width = Inf) |>
+  filter(.metric == "roc_auc") |>
+  ggplot(mapping = aes(x = trees, y = mean, color = factor(mtry))) +
+  geom_point() +
+  labs(x = "Num. of Trees", y = "CV AUC")
+```
+```{r random forest best}
+rf_fit |> show_best(metric = "roc_auc")
+
+rf_best <- rf_fit |>
+  select_best(metric = "roc_auc")
+rf_best
+```
+
+```{r finalize random forest}
+rf_final <- rf_wf |>
+  finalize_workflow(rf_best)
+rf_final
+```
+
+```{r}
+rf_fit_final <- rf_final |>
+  last_fit(data_split)
+rf_fit_final
+
+rf_fit_final |>
+  collect_metrics()
+```
+
+#### MLP
+
+```{r mlp preprocessing}
+mlp_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
+  # Mean inputation for normal variables
+  step_impute_mean(bicarbonate, chloride, hematocrit, sodium, heart_rate) |>
+  
+  # Median imputation for skewed variables
+  step_impute_median(creatinine, glucose, potassium, wbc, 
+                     non_invasive_blood_pressure_diastolic, 
+                     non_invasive_blood_pressure_systolic, 
+                     respiratory_rate, temperature_fahrenheit) |>
+  
+  # KNN imputation for categorical variables
+  step_impute_knn(marital_status) |>
+  
+  # zero-variance filter
+  step_zv(all_nominal_predictors()) |>
+  
+  # center and scale numeric data
+  step_normalize(all_numeric_predictors()) |>
+  print()
+```
+
+```{r mlp model}
+mlp_mod <- mlp(
+  mode = "classification",
+  hidden_units = tune(),
+  dropout = tune(),
+  epochs = tune()
+  ) |>
+  set_engine("keras", verbose = 0)
+mlp_mod
+```
+
+```{r mlp workflow}
+mlp_wf <- workflow() |>
+  add_recipe(mlp_rec) |>
+  add_model(mlp_mod)
+mlp_wf
+```
+
+```{r mlp grid}
+mlp_grid <- grid_regular(
+  hidden_units(range = c(32, 256)),
+  dropout(range = c(0.1, 0.5)),
+  epochs(range = c(20, 100)),
+  levels = 4
+  )
+mlp_grid
+```
+
+```{r mlp fit}
+set.seed(203)
+
+folds <- vfold_cv(mimiciv_icu_cohort_train, v = 5, strata = los_long)
+folds
+
+mlp_fit <- mlp_wf |>
+  tune_grid(
+    resamples = folds,
+    grid = mlp_grid,
+    metrics = metric_set(roc_auc, accuracy)
+  )
+```
+
+```{r}
+mlp_fit |>
+  collect_metrics() |>
+  print(width = Inf) |>
+  filter(.metric == "roc_auc") |>
+  ggplot(mapping = aes(x = dropout, y = mean, color = factor(hidden_units))) +
+  geom_point() +
+  labs(x = "Dropout Rate", y = "CV AUC") +
+  scale_x_log10()
+```
 
 
 ### 4. Compare model classification performance on the test set. 
