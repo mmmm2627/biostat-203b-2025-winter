@@ -20,6 +20,8 @@ library(gtsummary)
 library(naniar)  # Visualize missing data
 library(ggplot2)
 library(recipes)
+library(glmnet)
+library(caret)
 ```
 
 ## Predicting ICU duration
@@ -27,9 +29,9 @@ library(recipes)
 Using the ICU cohort `mimiciv_icu_cohort.rds` you built in Homework 4, develop at least three machine learning approaches (logistic regression with enet regularization, random forest, boosting, SVM, MLP, etc) plus a model stacking approach for predicting whether a patient's ICU stay will be longer than 2 days. You should use the `los_long` variable as the outcome. You algorithms can use patient demographic information (gender, age at ICU `intime`, marital status, race), ICU admission information (first care unit), the last lab measurements before the ICU stay, and first vital measurements during ICU stay as features. You are welcome to use any feature engineering techniques you think are appropriate; but make sure to not use features that are not available at an ICU stay's `intime`. For instance, `last_careunit` cannot be used in your algorithms. 
 
 
-1. Data preprocessing and feature engineering.
+### 1. Data preprocessing and feature engineering.
 
-```{r}
+```{r Select Features & Target}
 # Load Data
 cohort_data <- readRDS("mimic_icu_cohort.rds")
 
@@ -65,7 +67,7 @@ mimiciv_icu_cohort <- cohort_data |>
   print(width = Inf)
 ```
 
-```{r}
+```{r Check for missing values}
 # Check for missing values
 mimiciv_icu_cohort |> tbl_summary(by = los_long)
 ```
@@ -73,14 +75,14 @@ mimiciv_icu_cohort |> tbl_summary(by = los_long)
 There are missing values in `marital_status`, lab measurements, and vital measurements.
 Missing values are visualized before deciding how to handle them.
 
-```{r}
+```{r visualize missing values}
 vis_miss(mimiciv_icu_cohort |>
            select(-subject_id, -hadm_id, -stay_id, -los_long, -gender, 
                   -age_intime, -race, -first_careunit), 
          warn_large_data = FALSE)
 ```
 
-```{r}
+```{r visualize distribution of continuous variable with missing value}
 numeric_cols <- select(mimiciv_icu_cohort |>
                          select(-subject_id, -hadm_id, -stay_id, -los_long, 
                                 -gender, -age_intime, -race, -first_careunit), 
@@ -102,7 +104,7 @@ Mean imputation should be used for normally distributed variables, `bicarbonate`
 
 Median imputation should be used for skewed variables, `creatinine`, `glucose`, `potassium`, `wbc`, `non_invasive_blood_pressure_diastolic`, `non_invasive_blood_pressure_systolic`, `respiratory_rate`, and `temperature_fahrenheit`.
 
-```{r}
+```{r visualize distribution of categorical variable with missing value}
 ggplot(mimiciv_icu_cohort, aes(x = marital_status)) +
   geom_bar() +
   labs(title = "Bar plot of Age at ICU Intime by LOS Long",
@@ -112,14 +114,18 @@ ggplot(mimiciv_icu_cohort, aes(x = marital_status)) +
 
 KNN imputation should be used for categorical variables, `marital_status`.
 
-2. Partition data into 50% training set and 50% test set. Stratify partitioning according to `los_long`. For grading purpose, sort the data by `subject_id`, `hadm_id`, and `stay_id` and use the seed `203` for the initial data split. Below is the sample code.
+### 2. Partition data into 50% training set and 50% test set. 
+
+Stratify partitioning according to `los_long`. For grading purpose, sort the data by `subject_id`, `hadm_id`, and `stay_id` and use the seed `203` for the initial data split. Below is the sample code.
 ```{r}
 #| eval: false
 set.seed(203)
 
 # sort
 mimiciv_icu_cohort <- mimiciv_icu_cohort |>
-  arrange(subject_id, hadm_id, stay_id)
+  arrange(subject_id, hadm_id, stay_id) |>
+  # remove subject_id, hadm_id, stay_id
+  select(-subject_id, -hadm_id, -stay_id)
 
 data_split <- initial_split(
   mimiciv_icu_cohort, 
@@ -137,13 +143,12 @@ mimiciv_icu_cohort_test <- testing(data_split)
 dim(mimiciv_icu_cohort_test)
 ```
 
-3. Train and tune the models using the training set.
+### 3. Train and tune the models using the training set.
 
-**Logistic regression with enet regularization:**
+#### Logistic regression with enet regularization
 
-
-```{r}
-rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort) |>
+```{r logistic regression preprocessing}
+logit_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
   # Mean inputation for normal variables
   step_impute_mean(bicarbonate, chloride, hematocrit, sodium, heart_rate) |>
   
@@ -154,19 +159,107 @@ rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort) |>
                      respiratory_rate, temperature_fahrenheit) |>
   
   # KNN imputation for categorical variables
-  step_impute_knn(marital_status)
+  step_impute_knn(marital_status) |>
+  
+  # create traditional dummy variables
+  step_dummy(all_nominal_predictors()) |>
+  # zero-variance filter
+  step_zv(all_nominal_predictors()) |>
+  # center and scale numeric data
+  step_normalize(all_numeric_predictors()) |>
+  print()
+```
 
-# Apply recipe to the data
-prepped_data <- prep(rec, training = mimiciv_icu_cohort)
-mimiciv_icu_cohort <- bake(prepped_data, new_data = mimiciv_icu_cohort)
+```{r logistic regression model}
+logit_mod <- logistic_reg(
+  penalty = tune(),
+  mixture = tune()
+) |>
+  set_engine("glmnet", standardize = FALSE) |>
+  print()
+```
 
-head(mimiciv_icu_cohort)
+```{r logistic regression workflow}
+logit_wf <- workflow() |>
+  add_recipe(logit_rec) |>
+  add_model(logit_mod) |>
+  print()
+```
+
+```{r logistic regression grid}
+logit_grid <- grid_regular(
+  penalty(range = c(-4, 1)),
+  mixture(),
+  levels = c(50, 5)
+  ) |>
+  print()
+```
+
+```{r cross-validation}
+set.seed(203)
+
+folds <- vfold_cv(mimiciv_icu_cohort_train, v = 5, strata = los_long)
+folds
+```
+
+```{r fit cross validation}
+(logit_fit <- logit_wf |>
+  tune_grid(
+    resamples = folds,
+    grid = logit_grid,
+    metrics = metric_set(roc_auc, accuracy)
+  )) |>
+  system.time()
+```
+
+```{r logistic regression results}
+logit_fit |>
+  # aggregate metrics from K folds
+  collect_metrics() |>
+  print(width = Inf) |>
+  filter(.metric == "roc_auc") |>
+  ggplot(mapping = aes(x = penalty, y = mean, color = factor(mixture))) +
+  geom_point() +
+  labs(x = "Penalty", y = "CV AUC") +
+  scale_x_log10()
 ```
 
 ```{r}
-
-# Check missing values after imputation
-colSums(is.na(mimiciv_icu_cohort))
+logit_fit |> show_best(metric = "roc_auc")
 ```
 
-4. Compare model classification performance on the test set. Report both the area under ROC curve and accuracy for each machine learning algorithm and the model stacking. Interpret the results. What are the most important features in predicting long ICU stays? How do the models compare in terms of performance and interpretability?
+```{r}
+logit_best <- logit_fit |>
+  select_best(metric = "roc_auc")
+
+logit_best
+```
+
+```{r finalize logistic regression}
+logit_final <- logit_wf |>
+  finalize_workflow(logit_best)
+logit_final
+```
+
+```{r logistic regression fit}
+logit_fit_final <- logit_final |>
+  last_fit(data_split)
+logit_fit_final
+```
+
+```{r logistic regression results test}
+logit_fit_final |>
+  collect_metrics()
+```
+
+
+
+#### Random Forest
+
+
+
+### 4. Compare model classification performance on the test set. 
+
+Report both the area under ROC curve and accuracy for each machine learning algorithm and the model stacking. Interpret the results. What are the most important features in predicting long ICU stays? How do the models compare in terms of performance and interpretability?
+
+
