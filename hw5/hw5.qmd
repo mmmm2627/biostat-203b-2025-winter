@@ -17,13 +17,13 @@ format:
 library(tidyverse)
 library(tidymodels)
 library(gtsummary)
-library(naniar)  # Visualize missing data
 library(ggplot2)
 library(recipes) # Data Preprocessing
 library(glmnet) # Logistic Regression
 library(caret) # Random Forest
 library(ranger) # Random Forest
-library(keras) # MLP
+library(xgboost) # XGBoost
+library(stacks) # model stacking
 ```
 
 ## Predicting ICU duration
@@ -35,7 +35,7 @@ Using the ICU cohort `mimiciv_icu_cohort.rds` you built in Homework 4, develop a
 
 ```{r Select Features & Target}
 # Load Data
-cohort_data <- readRDS("mimic_icu_cohort.rds")
+cohort_data <- readRDS("../hw4/mimiciv_shiny/mimic_icu_cohort.rds")
 
 # Select Features & Target
 mimiciv_icu_cohort <- cohort_data |>
@@ -77,12 +77,6 @@ mimiciv_icu_cohort |> tbl_summary(by = los_long)
 There are missing values in `marital_status`, lab measurements, and vital measurements.
 Missing values are visualized before deciding how to handle them.
 
-```{r visualize missing values}
-vis_miss(mimiciv_icu_cohort |>
-           select(-subject_id, -hadm_id, -stay_id, -los_long, -gender, 
-                  -age_intime, -race, -first_careunit), 
-         warn_large_data = FALSE)
-```
 
 ```{r visualize distribution of continuous variable with missing value}
 numeric_cols <- select(mimiciv_icu_cohort |>
@@ -205,13 +199,12 @@ folds
 ```
 
 ```{r fit cross validation}
-(logit_fit <- logit_wf |>
+logit_fit <- logit_wf |>
   tune_grid(
     resamples = folds,
     grid = logit_grid,
     metrics = metric_set(roc_auc, accuracy)
-  )) |>
-  system.time()
+  )
 ```
 
 ```{r logistic regression results}
@@ -226,33 +219,6 @@ logit_fit |>
   scale_x_log10()
 ```
 
-```{r}
-logit_fit |> show_best(metric = "roc_auc")
-```
-
-```{r}
-logit_best <- logit_fit |>
-  select_best(metric = "roc_auc")
-
-logit_best
-```
-
-```{r finalize logistic regression}
-logit_final <- logit_wf |>
-  finalize_workflow(logit_best)
-logit_final
-```
-
-```{r logistic regression fit}
-logit_fit_final <- logit_final |>
-  last_fit(data_split)
-logit_fit_final
-```
-
-```{r logistic regression results test}
-logit_fit_final |>
-  collect_metrics()
-```
 
 
 
@@ -276,6 +242,7 @@ rf_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
   step_zv(all_nominal_predictors()) |>
   print()
 ```
+
 ```{r random forest model}
 rf_mod <- rand_forest(
   mode = "classification",
@@ -348,10 +315,10 @@ rf_fit_final |>
   collect_metrics()
 ```
 
-#### MLP
+#### XGBoost
 
-```{r mlp preprocessing}
-mlp_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
+```{r XGBoost preprocessing}
+gb_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
   # Mean inputation for normal variables
   step_impute_mean(bicarbonate, chloride, hematocrit, sodium, heart_rate) |>
   
@@ -364,70 +331,279 @@ mlp_rec <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
   # KNN imputation for categorical variables
   step_impute_knn(marital_status) |>
   
+  # create dummy variable
+  step_dummy(all_nominal_predictors()) |>
+  
   # zero-variance filter
   step_zv(all_nominal_predictors()) |>
-  
-  # center and scale numeric data
-  step_normalize(all_numeric_predictors()) |>
   print()
 ```
 
-```{r mlp model}
-mlp_mod <- mlp(
+```{r XGBoost model}
+gb_mod <- boost_tree(
   mode = "classification",
-  hidden_units = tune(),
-  dropout = tune(),
-  epochs = tune()
-  ) |>
-  set_engine("keras", verbose = 0)
-mlp_mod
+  trees = 1000,
+  tree_depth = tune(),
+  learn_rate = tune()
+) |>
+  set_engine("xgboost")
+gb_mod
+```
+```{r XGBoost workflow}
+gb_wf <- workflow() |>
+  add_recipe(gb_rec) |>
+  add_model(gb_mod)
+gb_wf
 ```
 
-```{r mlp workflow}
-mlp_wf <- workflow() |>
-  add_recipe(mlp_rec) |>
-  add_model(mlp_mod)
-mlp_wf
-```
-
-```{r mlp grid}
-mlp_grid <- grid_regular(
-  hidden_units(range = c(32, 256)),
-  dropout(range = c(0.1, 0.5)),
-  epochs(range = c(20, 100)),
-  levels = 4
+```{r XGBoost grid}
+gb_grid <- grid_regular(
+  tree_depth(range = c(3L, 10L)),
+  learn_rate(range = c(0.01, 0.3)),
+  levels = c(3, 7)
   )
-mlp_grid
+gb_grid
 ```
 
-```{r mlp fit}
+```{r XGBoost fit}
 set.seed(203)
 
 folds <- vfold_cv(mimiciv_icu_cohort_train, v = 5, strata = los_long)
 folds
 
-mlp_fit <- mlp_wf |>
+gb_fit <- gb_wf |>
   tune_grid(
     resamples = folds,
-    grid = mlp_grid,
+    grid = gb_grid,
     metrics = metric_set(roc_auc, accuracy)
   )
+gb_fit
 ```
 
 ```{r}
-mlp_fit |>
+gb_fit |>
   collect_metrics() |>
   print(width = Inf) |>
   filter(.metric == "roc_auc") |>
-  ggplot(mapping = aes(x = dropout, y = mean, color = factor(hidden_units))) +
+  ggplot(mapping = aes(x = learn_rate, y = mean, color = factor(tree_depth))) +
   geom_point() +
-  labs(x = "Dropout Rate", y = "CV AUC") +
-  scale_x_log10()
+  labs(x = "Learning Rate", y = "CV AUC")
 ```
 
+```{r random forest best}
+gb_fit |> show_best(metric = "roc_auc")
+
+gb_best <- gb_fit |>
+  select_best(metric = "roc_auc")
+gb_best
+```
+
+```{r finalize XGBoost}
+gb_final <- gb_wf |>
+  finalize_workflow(gb_best)
+gb_final
+```
+
+```{r}
+gb_fit_final <- gb_final |>
+  last_fit(data_split)
+gb_fit_final
+
+gb_fit_final |>
+  collect_metrics()
+```
+
+#### Model Stacking
+
+```{r}
+stacks_recipe <- recipe(los_long ~ ., data = mimiciv_icu_cohort_train) |>
+  # Mean inputation for normal variables
+  step_impute_mean(bicarbonate, chloride, hematocrit, sodium, heart_rate) |>
+  
+  # Median imputation for skewed variables
+  step_impute_median(creatinine, glucose, potassium, wbc, 
+                     non_invasive_blood_pressure_diastolic, 
+                     non_invasive_blood_pressure_systolic, 
+                     respiratory_rate, temperature_fahrenheit) |>
+  
+  # KNN imputation for categorical variables
+  step_impute_knn(marital_status) |>
+  
+  # create dummy variable
+  step_dummy(all_nominal_predictors()) |>
+  
+  # zero-variance filter
+  step_zv(all_nominal_predictors()) |>
+  print()
+stacks_recipe
+```
+
+```{r}
+set.seed(203)
+folds <- vfold_cv(mimiciv_icu_cohort_train, v = 2)
+```
+
+```{r logistic regression}
+logit_mod <- logistic_reg(
+  penalty = tune(),
+  mixture = tune()
+) |>
+  set_engine("glmnet", standardize = TRUE)
+
+logit_wf <- workflow() |>
+  add_recipe(stacks_recipe) |>
+  add_model(logit_mod)
+
+logit_grid <- grid_regular(
+  penalty(range = c(-4, 1)),
+  mixture(),
+  levels = c(10, 5)
+  )
+
+logit_res <- 
+  tune_grid(
+    object = logit_wf,
+    resamples = folds,
+    grid = logit_grid,
+    control = control_stack_grid()
+  )
+logit_res
+```
+
+```{r random forest}
+rf_mod <- rand_forest(
+  mode = "classification",
+  mtry = tune(), # number of predictors randomly sampled in each split
+  trees = tune() # number of trees in ensemble
+) |>
+  set_engine("ranger")
+
+rf_wf <- workflow() |>
+  add_recipe(stacks_recipe) |>
+  add_model(rf_mod)
+
+rf_grid <- grid_regular(
+  trees(range = c(200L, 1000L)),
+  mtry(range = c(1L, 8L)),
+  levels = c(4, 5)
+  )
+
+rf_res <- tune_grid(
+  object = rf_wf,
+  resamples = folds,
+  grid = rf_grid,
+  control = control_stack_grid()
+)
+rf_res
+```
+
+```{r XGBoost}
+gb_mod <- boost_tree(
+  mode = "classification",
+  trees = 1000,
+  tree_depth = tune(),
+  learn_rate = tune()
+) |>
+  set_engine("xgboost")
+gb_mod
+
+gb_wf <- workflow() |>
+  add_recipe(stacks_recipe) |>
+  add_model(gb_mod)
+
+gb_grid <- grid_regular(
+  tree_depth(range = c(3L, 10L)),
+  learn_rate(range = c(0.01, 0.3)),
+  levels = c(2, 5)
+  )
+
+gb_res <- tune_grid(
+  object = gb_wf,
+  resamples = folds,
+  grid = gb_grid,
+  control = control_stack_grid()
+  )
+gb_res
+```
+
+```{r}
+model_st <- stacks() |>
+  add_candidates(logit_res) |>
+  add_candidates(rf_res) |>
+  add_candidates(gb_res) |>
+  # determine how to combine their predictions
+  blend_predictions(
+    penalty = 10^(-6:2),
+    metrics = c("roc_auc")
+  ) |>
+  # fit candidates with nonzero stacking coefficients
+  fit_members()
+```
+
+```{r}
+model_st
+```
+
+```{r}
+autoplot(model_st)
+```
+
+```{r}
+autoplot(model_st, type = "members")
+```
+
+```{r}
+autoplot(model_st, type = "weights")
+```
+
+```{r}
+collect_parameters(model_st, "rf_res")
+```
+
+```{r}
+mimic_pred <- mimiciv_icu_cohort_test %>%
+  bind_cols(predict(model_st, ., type = "prob")) %>%
+  print(width = Inf)
+```
+
+```{r}
+yardstick::roc_auc(
+  mimic_pred,
+  truth = los_long,
+  contains(".pred_FALSE")
+)
+```
 
 ### 4. Compare model classification performance on the test set. 
 
 Report both the area under ROC curve and accuracy for each machine learning algorithm and the model stacking. Interpret the results. What are the most important features in predicting long ICU stays? How do the models compare in terms of performance and interpretability?
 
+#### Logistic Regression
 
+```{r}
+logit_fit |> show_best(metric = "roc_auc")
+```
+
+```{r}
+logit_best <- logit_fit |>
+  select_best(metric = "roc_auc")
+
+logit_best
+```
+
+```{r finalize logistic regression}
+logit_final <- logit_wf |>
+  finalize_workflow(logit_best)
+logit_final
+```
+
+```{r logistic regression fit}
+logit_fit_final <- logit_final |>
+  last_fit(data_split)
+logit_fit_final
+```
+
+```{r logistic regression results test}
+logit_fit_final |>
+  collect_metrics()
+```
