@@ -290,7 +290,7 @@ rf_wf
 rf_grid <- grid_regular(
   trees(range = c(200L, 800L)),
   mtry(range = c(1L, 8L)),
-  levels = c(4, 5)
+  levels = c(2, 4)
   )
 rf_grid
 ```
@@ -385,7 +385,7 @@ gb_wf
 gb_grid <- grid_regular(
   tree_depth(range = c(3L, 10L)),
   learn_rate(range = c(0.01, 0.3)),
-  levels = c(3, 7)
+  levels = c(2, 2)
   )
 gb_grid
 ```
@@ -465,7 +465,7 @@ set.seed(203)
 folds <- vfold_cv(mimiciv_icu_cohort_train, v = 2)
 ```
 
-```{r logistic regression}
+```{r logistic regression, cache=TRUE}
 logit_mod <- logistic_reg(
   penalty = tune(),
   mixture = tune()
@@ -479,7 +479,7 @@ logit_wf <- workflow() |>
 logit_grid <- grid_regular(
   penalty(range = c(-4, 1)),
   mixture(),
-  levels = c(10, 5)
+  levels = c(10, 3)
   )
 
 logit_res <- 
@@ -492,7 +492,7 @@ logit_res <-
 logit_res
 ```
 
-```{r random forest}
+```{r random forest, cache=TRUE}
 rf_mod <- rand_forest(
   mode = "classification",
   mtry = tune(), # number of predictors randomly sampled in each split
@@ -507,7 +507,7 @@ rf_wf <- workflow() |>
 rf_grid <- grid_regular(
   trees(range = c(200L, 1000L)),
   mtry(range = c(1L, 8L)),
-  levels = c(2, 5)
+  levels = c(2, 2)
   )
 
 rf_res <- tune_grid(
@@ -519,7 +519,7 @@ rf_res <- tune_grid(
 rf_res
 ```
 
-```{r XGBoost}
+```{r XGBoost, cache=TRUE}
 gb_mod <- boost_tree(
   mode = "classification",
   trees = 1000,
@@ -536,7 +536,7 @@ gb_wf <- workflow() |>
 gb_grid <- grid_regular(
   tree_depth(range = c(3L, 10L)),
   learn_rate(range = c(0.01, 0.3)),
-  levels = c(2, 5)
+  levels = c(1, 2)
   )
 
 gb_res <- tune_grid(
